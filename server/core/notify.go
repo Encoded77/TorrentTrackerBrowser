@@ -1,15 +1,19 @@
 package core
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"log/slog"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 )
 
-// Webhook posts ntfy-compatible JSON to a URL. An empty URL is a no-op.
+// Webhook posts job outcomes to an ntfy-style topic URL: the message is the
+// plain-text body and the title, priority and tags travel as headers. That is
+// what ntfy expects on a topic URL (a JSON body would be shown verbatim), and
+// it keeps the URL free to carry ntfy's ?auth= query parameter. An empty URL
+// is a no-op.
 type Webhook struct {
 	URL    string
 	Client *http.Client
@@ -20,7 +24,7 @@ func NewWebhook(url string) Notifier {
 	return &Webhook{URL: url, Client: &http.Client{Timeout: 10 * time.Second}}
 }
 
-// Notify sends {title, message, priority, tags}; failures are only logged.
+// Notify sends the message; failures are only logged.
 func (w *Webhook) Notify(ctx context.Context, title, message string, failed bool) {
 	if w == nil || w.URL == "" {
 		return
@@ -29,18 +33,15 @@ func (w *Webhook) Notify(ctx context.Context, title, message string, failed bool
 	if failed {
 		priority = 4
 	}
-	body, _ := json.Marshal(map[string]any{
-		"title":    title,
-		"message":  message,
-		"priority": priority,
-		"tags":     []string{"torrent"},
-	})
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, w.URL, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, w.URL, strings.NewReader(message))
 	if err != nil {
 		slog.Warn("notify: build request", "err", err)
 		return
 	}
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Type", "text/plain; charset=utf-8")
+	req.Header.Set("Title", title)
+	req.Header.Set("Priority", strconv.Itoa(priority))
+	req.Header.Set("Tags", "torrent")
 	resp, err := w.Client.Do(req)
 	if err != nil {
 		slog.Warn("notify: post", "err", err)

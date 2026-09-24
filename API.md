@@ -132,4 +132,5 @@ shape. Actions on them: `DELETE` (removes from the engine), and
 ## Notifications
 
 On `done` or `failed`, if `notify.webhook` is set, the server POSTs (titles in `notify.lang`, `en` or `fr`)
-`{ "title": "…", "message": "…", "priority": 3 | 4, "tags": ["torrent"] }` to it (ntfy-compatible).
+the message as a plain-text body with `Title`, `Priority` (3, or 4 on failure) and `Tags: torrent` headers,
+the ntfy topic-URL convention (so the URL may carry ntfy's `?auth=` parameter).

@@ -66,8 +66,8 @@ limits:
   resultCap: 20000        # max cached results
   jobHistory: 200         # finished jobs kept in the queue
 
-# ntfy-compatible webhook, POSTed {title, message, priority, tags} on
-# done/failed. Empty disables notifications.
+# ntfy topic URL (or any endpoint accepting ntfy's header convention): the message is
+# the text body, Title/Priority/Tags are headers. Posted on job done or failed. Empty disables.
 notify:
   webhook: ""
   lang: fr            # language of the notification titles: en or fr
