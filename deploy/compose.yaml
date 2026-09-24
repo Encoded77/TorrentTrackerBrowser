@@ -1,0 +1,28 @@
+# Production stack: one container, one binary. Run from the deploy/ folder:
+#   cp ../.env.example .env && cp config.example.yaml config.yaml   # then edit both
+#   docker compose up -d --build
+# The reverse proxy (Caddy, NPM, Traefik...) terminates TLS and forwards to :8080.
+services:
+  ttb:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: torrenttrackerbrowser:latest
+    container_name: ttb
+    restart: unless-stopped
+    user: "${PUID:-1000}:${PGID:-1000}"
+    env_file: .env
+    environment:
+      TZ: Europe/Paris
+    volumes:
+      - ./config.yaml:/config/config.yaml:ro
+      - ./data:/data
+      # Storage roots declared in config.yaml, same path on both sides.
+      - /mnt/media:/mnt/media
+      - /mnt/shared:/mnt/shared
+    ports:
+      - "8080:8080"
+    logging:
+      driver: journald
+      options:
+        tag: ttb

@@ -1,0 +1,25 @@
+[
+  {
+    "guid": "https://tr4ker.example/t/1", "indexerId": 16, "indexer": "TR4KER",
+    "title": "Dune Part Two 2024 MULTI 1080p WEB H265-XYZ", "size": 4812345678,
+    "seeders": 120, "leechers": 4, "grabs": 31, "publishDate": "2026-05-15T00:01:24Z",
+    "infoHash": "0723937B3B5D7A2C4F7E8A9B0C1D2E3F40516273",
+    "downloadUrl": "http://prowlarr/16/download?apikey=x&link=abc", "infoUrl": "https://tr4ker.example/t/1",
+    "categories": [ { "id": 2000, "name": "Movies" }, { "id": 2040, "name": "Movies/HD" } ],
+    "indexerFlags": [ "freeleech" ]
+  },
+  {
+    "guid": "https://tr4ker.example/t/2", "indexerId": 16, "indexer": "TR4KER",
+    "title": "Some Show S01E01 VOSTFR 1080p", "size": 1500000000,
+    "seeders": 10, "leechers": 1, "grabs": 3, "publishDate": "2026-05-14T10:00:00Z",
+    "magnetUrl": "magnet:?xt=urn:btih:0000000000000000000000000000000000000001&dn=Some+Show",
+    "categories": [ { "id": 5070, "name": "TV/Anime" }, { "id": 5000, "name": "TV" } ],
+    "indexerFlags": [ "G_Freeleech" ]
+  },
+  {
+    "guid": "https://tr4ker.example/t/3", "indexerId": 16, "indexer": "TR4KER",
+    "title": "Game 2024 PC", "size": 100, "seeders": 1, "leechers": 0, "grabs": 0,
+    "publishDate": "2026-01-01T00:00:00Z", "downloadUrl": "http://prowlarr/16/download?link=game",
+    "categories": [ { "id": 4050, "name": "PC/Games" } ], "indexerFlags": []
+  }
+]

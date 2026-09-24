@@ -1,0 +1,73 @@
+# TorrentTrackerBrowser server configuration.
+# ${...} references (a variable name between the braces) are replaced from
+# the environment at startup, everywhere in the file including comments; an
+# unset variable is a startup error. Unknown adapter types fail startup too.
+
+# Interface and port to bind. Bind to one interface on a LAN host.
+listen: 0.0.0.0:8080
+
+# Host-header allowlist (DNS rebinding guard). Empty = allow any host.
+allowedHosts: [torrents.example.lan, 192.168.1.26]
+
+# Optional shared secret. When set, every /api request must carry
+# "Authorization: Bearer <token>" or "?token=<token>" (EventSource).
+token: ""
+
+# Where jobs.json (queue state, resumable across restarts) is written.
+dataDir: ./data
+
+# Where results come from. type: prowlarr (url + apiKey).
+sources:
+  - id: prowlarr
+    type: prowlarr
+    url: http://prowlarr:9696
+    apiKey: ${PROWLARR_KEY}
+
+# What turns a payload into files.
+engines:
+  # TorBox debrid: caps cached + directLinks. removeAfterCopy deletes the
+  # TorBox item once every file was copied (default false).
+  - id: torbox
+    type: torbox
+    apiKey: ${TORBOX_KEY}
+    removeAfterCopy: false
+  # qBittorrent WebUI: caps savePath + localFiles. Keys: url, username,
+  # password, pathMap, category. Empty username = no login (IP whitelist).
+  # pathMap translates app-side storage roots to what the client sees; when
+  # set, a storage outside every prefix is refused for this engine.
+  - id: qbit
+    type: qbittorrent
+    url: http://qbit:8080
+    username: ${QBIT_USER}
+    password: ${QBIT_PASS}
+    pathMap:
+      "/mnt/media": "/data"
+    category: ttb
+
+# Directory roots the app may write into. type: path (root must exist).
+storages:
+  - id: downloads
+    type: path
+    label: Téléchargements
+    root: /mnt/media/downloads/manual
+
+# Preselected engine, storage and delivery mode (copy | adopt | links).
+defaults:
+  engine: torbox
+  storage: downloads
+  mode: copy
+
+limits:
+  jobs: 2                 # concurrent jobs
+  filesPerJob: 2          # parallel file copies inside one job
+  resultsPerIndexer: 100  # cap per indexer and per search
+  indexerTimeout: 20s     # per-indexer search timeout
+  resultTTL: 30m          # how long result and payload ids stay valid
+  resultCap: 20000        # max cached results
+  jobHistory: 200         # finished jobs kept in the queue
+
+# ntfy-compatible webhook, POSTed {title, message, priority, tags} on
+# done/failed. Empty disables notifications.
+notify:
+  webhook: ""
+  lang: fr            # language of the notification titles: en or fr

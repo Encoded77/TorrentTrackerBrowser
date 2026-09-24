@@ -1,0 +1,19 @@
+# node
+web/node_modules/
+web/.svelte-kit/
+web/build/
+web/init.log
+web/add.log
+# go
+server/bin/
+server/web/
+# runtime
+.env
+data/
+*.log
+server/tmp/
+server/config.dev.yaml
+deploy/config.yaml
+deploy/.env
+deploy/data/
+web/dev.cmd

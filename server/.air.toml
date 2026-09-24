@@ -1,0 +1,13 @@
+root = "."
+tmp_dir = "tmp"
+
+[build]
+  cmd = "go build -o ./tmp/ttb ."
+  bin = "./tmp/ttb"
+  args_bin = ["-config", "config.dev.yaml"]
+  include_ext = ["go", "yaml"]
+  exclude_dir = ["tmp", "ui/build", "testdata"]
+  delay = 500
+
+[log]
+  time = false

@@ -1,0 +1,6 @@
+[
+  { "id": 16, "name": "TR4KER", "privacy": "private", "enable": true, "protocol": "torrent" },
+  { "id": 3, "name": "C411", "privacy": "semiPrivate", "enable": true, "protocol": "torrent" },
+  { "id": 7, "name": "Old Public", "privacy": "public", "enable": false, "protocol": "torrent" },
+  { "id": 9, "name": "TPB", "privacy": "public", "enable": true, "protocol": "torrent" }
+]

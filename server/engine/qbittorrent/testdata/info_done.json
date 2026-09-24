@@ -1,0 +1,5 @@
+[ { "hash": "0723937b3b5d7a2c4f7e8a9b0c1d2e3f40516273", "name": "Dune Part Two 2024", "state": "stalledUP",
+    "progress": 1, "dlspeed": 0, "eta": 8640000, "size": 30, "total_size": 30, "category": "ttb",
+    "save_path": "/data/downloads/manual/Dune", "content_path": "/data/downloads/manual/Dune/Dune Part Two 2024" },
+  { "hash": "ffffffffffffffffffffffffffffffffffffffff", "name": "Broken", "state": "missingFiles",
+    "progress": 0.1, "dlspeed": 0, "eta": 0, "size": 5, "total_size": 5, "category": "ttb", "save_path": "/data/x", "content_path": "/data/x/Broken" } ]

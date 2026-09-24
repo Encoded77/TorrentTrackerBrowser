@@ -1,0 +1,9 @@
+# Caddy reverse-proxy snippet. SSE needs no special flag in Caddy (it does not buffer),
+# but flush_interval -1 makes the intent explicit.
+@ttb host torrents.example.lan
+handle @ttb {
+	reverse_proxy 192.168.1.26:8080 {
+		flush_interval -1
+		lb_try_duration 30s
+	}
+}

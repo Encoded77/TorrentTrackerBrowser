@@ -1,0 +1,8 @@
+{ "success": true, "error": null, "detail": "ok", "data": {
+  "id": 4321, "name": "Dune Part Two 2024", "hash": "0723937b3b5d7a2c4f7e8a9b0c1d2e3f40516273", "size": 30,
+  "download_state": "downloading", "download_finished": false, "download_present": false,
+  "progress": 0.42, "download_speed": 12345678, "eta": 120,
+  "files": [
+    { "id": 11, "name": "Dune Part Two 2024/dune.mkv", "short_name": "dune.mkv", "size": 20, "s3_path": "x/dune.mkv" },
+    { "id": 12, "name": "Dune Part Two 2024/sample.mkv", "short_name": "sample.mkv", "size": 10, "s3_path": "x/sample.mkv" }
+  ] } }

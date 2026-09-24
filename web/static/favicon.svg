@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <title>TorrentTrackerBrowser</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#27272a"/>
+      <stop offset="1" stop-color="#09090b"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#bg)"/>
+  <!-- magnet: search results pulled to one place -->
+  <path d="M20 16v16a12 12 0 0 0 24 0V16" fill="none" stroke="#fafafa" stroke-width="7" stroke-linecap="butt"/>
+  <rect x="16.5" y="12" width="7" height="10" rx="1.5" fill="#22d3ee"/>
+  <rect x="40.5" y="12" width="7" height="10" rx="1.5" fill="#22d3ee"/>
+  <!-- download arrow into the magnet's field -->
+  <path d="M32 24v14M27 34l5 5 5-5" fill="none" stroke="#22d3ee" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

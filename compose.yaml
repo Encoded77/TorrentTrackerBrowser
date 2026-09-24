@@ -1,0 +1,39 @@
+# Development stack: Vite dev server with HMR + Go API with hot reload.
+# Usage: cp .env.example .env, fill the keys, then `docker compose up`.
+# UI: http://localhost:5173 (proxies /api to the api service).
+services:
+  api:
+    image: golang:1.27-alpine
+    working_dir: /src
+    command: sh -c "go run github.com/air-verse/air@v1.62.0 -c .air.toml"
+    environment:
+      GOFLAGS: -buildvcs=false
+      TTB_CONFIG: /src/config.dev.yaml
+    env_file: .env
+    volumes:
+      - ./server:/src
+      - go-mod:/go/pkg/mod
+      - go-build:/root/.cache/go-build
+      - ./data:/data
+      - ${DEV_STORAGE_ROOT:-./data/storage}:/storage
+    ports:
+      - "8080:8080"
+
+  web:
+    image: node:24-alpine
+    working_dir: /web
+    command: sh -c "npm ci --no-audit --no-fund && npm run dev -- --host 0.0.0.0 --port 5173"
+    environment:
+      API_URL: http://api:8080
+    volumes:
+      - ./web:/web
+      - web-node-modules:/web/node_modules
+    ports:
+      - "5173:5173"
+    depends_on:
+      - api
+
+volumes:
+  go-mod:
+  go-build:
+  web-node-modules:
