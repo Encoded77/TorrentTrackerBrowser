@@ -141,11 +141,18 @@
 	--color-info: var(--info);
 }
 
-/* Dialogs (download, payload, confirm) open on top of the queue sheet; both default to z-50. */
+/* Stacking: sheet (z-50) < dialogs (60) < floating layers opened from inside a dialog (70).
+   Every layer defaults to z-50 in shadcn, which would hide a select opened in a dialog. */
 @layer utilities {
 	[data-slot="dialog-overlay"],
 	[data-slot="dialog-content"] {
 		z-index: 60;
+	}
+	[data-slot="select-content"],
+	[data-slot="popover-content"],
+	[data-slot="dropdown-menu-content"],
+	[data-slot="tooltip-content"] {
+		z-index: 70;
 	}
 }
 
