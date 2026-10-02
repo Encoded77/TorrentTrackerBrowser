@@ -121,6 +121,11 @@ export const api = {
 	shareJob: (id: string, body: { days: number; password?: string }) =>
 		request<{ url: string }>(`/api/jobs/${encodeURIComponent(id)}/share`, json(body)),
 
+	moveJob: (id: string, body: { storage: string; subdir: string | null }) =>
+		request<Job>(`/api/jobs/${encodeURIComponent(id)}/move`, json(body)),
+
+	storageDirs: (id: string) => request<{ dirs: string[] }>(`/api/storages/${encodeURIComponent(id)}/dirs`),
+
 	jobFileUrl: (jobId: string, path: string) =>
 		`/api/jobs/${encodeURIComponent(jobId)}/files/${path.split('/').map(encodeURIComponent).join('/')}`
 };

@@ -36,6 +36,8 @@ func (s *Server) Handler(ui http.Handler) http.Handler {
 	api.HandleFunc("POST /api/jobs/{id}/rescan", s.rescanJob)
 	api.HandleFunc("POST /api/jobs/{id}/send", s.sendJob)
 	api.HandleFunc("POST /api/jobs/{id}/share", s.shareJob)
+	api.HandleFunc("POST /api/jobs/{id}/move", s.moveJob)
+	api.HandleFunc("GET /api/storages/{id}/dirs", s.storageDirs)
 	api.HandleFunc("DELETE /api/jobs/{id}", s.deleteJob)
 	api.HandleFunc("GET /api/jobs/{id}/files/{path...}", s.jobFile)
 	api.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {

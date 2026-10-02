@@ -26,6 +26,12 @@
 	let files = $state<number[] | null>(null);
 	let busy = $state(false);
 	let lastKey = $state<string | null>(null);
+	let dirs = $state<string[]>([]);
+	$effect(() => {
+		const id = storage;
+		dirs = [];
+		if (id) api.storageDirs(id).then((r) => storage === id && (dirs = r.dirs), () => {});
+	});
 
 	const caps = $derived(app.caps);
 	const engines = $derived(caps?.engines ?? []);
@@ -242,7 +248,10 @@
 				</div>
 				<label class="grid gap-1.5">
 					<span class="text-xs text-muted-foreground">{s.subdir}</span>
-					<Input name="subdir" bind:value={subdir} placeholder={s.subdirPlaceholder} autocomplete="off" spellcheck={false} />
+					<Input name="subdir" bind:value={subdir} placeholder={s.subdirPlaceholder} list="download-dirs" autocomplete="off" spellcheck={false} />
+					<datalist id="download-dirs">
+						{#each dirs as d (d)}<option value={d}></option>{/each}
+					</datalist>
 					<span class="text-xs text-muted-foreground">
 						{#if subdir && cleanSubdir !== subdir.trim()}
 							{s.subdirHint} <span class="font-medium text-foreground">{cleanSubdir || '/'}</span>

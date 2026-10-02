@@ -157,8 +157,23 @@ shape. Actions on them: `DELETE` (removes from the engine), and
   `days` 0 = never expires, max 365. The server POSTs
   `{ "paths": [delivered paths, relative to the storage], "name", "description", "days", "password" }`
   to `share.url`, which answers `{ "url" }` (any other answer: `502 share_error` with its `error`).
+- `POST /api/jobs/{id}/move { "storage": "roms", "subdir": "gba" | null }` → Job. A `done` copy job
+  only (else `409 bad_state`): the files it delivered (not `skipped` ones) move to `subdir` of
+  `storage`, keeping their path relative to the job's subdir; a single file goes straight into
+  `subdir`. Rename when both storages share a filesystem, else copy then delete; the source folders
+  left empty are removed. A name already taken at the destination answers `409 move_failed` and
+  nothing moves; a failure midway puts the moved files back. A named user may only target
+  `users.storages` (`403 storage_not_allowed`).
+- `GET /api/storages/{id}/dirs` → `{ "dirs": ["gba", "snes"] }`, the storage's top-level folders
+  (suggestions for `subdir`).
 - `GET /api/jobs/{id}/files/{path}` → streams the file (Range supported, `Content-Disposition`).
   In `links` mode with `caps.directLinks`, answers `302` to a freshly resolved engine link.
+
+## Delivery hook
+
+A storage entry may carry `onDelivered: <url>`. When a job finishes `done` in that storage, or a move
+puts files there, the server POSTs `{ "storage", "subdir", "paths": [delivered paths, relative to the
+storage] }` (JSON, fire and forget, 15 s timeout; failures are logged, never retried).
 
 ## Users
 

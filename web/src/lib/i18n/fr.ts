@@ -254,6 +254,11 @@ export const fr = {
 	confirmPurgeBody: (count: number, size: string, folder: string) =>
 		`${count} fichier${count > 1 ? 's' : ''} (${size})${folder ? ` du dossier « ${folder} »` : ''} ${count > 1 ? 'seront supprimés' : 'sera supprimé'} du NAS, avec la copie sur le moteur et l'entrée de la file. Action irréversible.`,
 	jobPurged: 'Fichiers supprimés',
+	moveJob: 'Déplacer',
+	moveTitle: 'Déplacer les fichiers',
+	moveFolder: 'Dossier (ex. la plateforme pour une ROM : gba, snes, psx…)',
+	moveHint: 'Un seul fichier va directement dans ce dossier ; plusieurs gardent leur arborescence.',
+	jobMoved: 'Fichiers déplacés',
 	shareJob: 'Partager',
 	shareTitle: 'Lien de partage',
 	shareExpiry: 'Expire dans',

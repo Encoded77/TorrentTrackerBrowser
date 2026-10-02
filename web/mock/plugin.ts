@@ -436,6 +436,11 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
 		return true;
 	}
 
+	const dirsMatch = /^\/api\/storages\/([^/]+)\/dirs$/.exec(path);
+	if (dirsMatch && method === 'GET') {
+		send(res, 200, { dirs: dirsMatch[1] === 'roms' ? ['gb', 'gba', 'n64', 'nds', 'psx', 'snes'] : ['Films', 'Jeux'] });
+		return true;
+	}
 	if (path === '/api/jobs' && method === 'GET') {
 		const own = jobs.filter((j) => !j.external).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
 		const ext = jobs.filter((j) => j.external);
@@ -483,7 +488,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
 		return true;
 	}
 
-	const jobAction = /^\/api\/jobs\/([^/]+)(?:\/(cancel|retry|send|rescan|share))?$/.exec(path);
+	const jobAction = /^\/api\/jobs\/([^/]+)(?:\/(cancel|retry|send|rescan|share|move))?$/.exec(path);
 	if (jobAction) {
 		const id = decodeURIComponent(jobAction[1]);
 		const action = jobAction[2];
@@ -529,6 +534,26 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
 			for (const f of job.files) if (f.state === 'failed') f.state = 'pending';
 			// Seeded jobs stay still unless copying; make this one live.
 			job.id = job.id.replace('j_seed_', 'j_retry_');
+			touch(job);
+			send(res, 200, job);
+			return true;
+		}
+		if (method === 'POST' && action === 'move') {
+			if (!guardMutation(req, res)) return true;
+			const body = JSON.parse((await readBody(req)).toString('utf8')) as { storage: string; subdir: string | null };
+			if (job.state !== 'done' || job.mode !== 'copy') {
+				fail(res, 409, 'bad_state', 'only a finished copy job with delivered files can be moved');
+				return true;
+			}
+			const sub = body.subdir ?? '';
+			const done = job.files.filter((f: { path: string; state: string }) => f.state === 'done');
+			for (const f of done) {
+				const rel = job.subdir ? f.path.replace(job.subdir + '/', '') : f.path;
+				const name = done.length === 1 ? rel.split('/').pop()! : rel;
+				f.path = sub ? `${sub}/${name}` : name;
+			}
+			job.storage = body.storage;
+			job.subdir = sub || null;
 			touch(job);
 			send(res, 200, job);
 			return true;

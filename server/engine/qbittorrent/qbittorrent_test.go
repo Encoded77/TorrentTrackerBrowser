@@ -34,6 +34,7 @@ type fakeQbit struct {
 	done      bool
 	expireSID bool // next authenticated call answers 403 once
 	auth      bool // require the SID cookie
+	noContent bool // answer a good login like qBittorrent 5.2+: 204, no body
 }
 
 func newFakeQbit(t *testing.T, auth bool) *fakeQbit {
@@ -49,6 +50,10 @@ func newFakeQbit(t *testing.T, auth bool) *fakeQbit {
 			return
 		}
 		http.SetCookie(w, &http.Cookie{Name: "SID", Value: "s3cret", Path: "/"})
+		if f.noContent {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
 		w.Write([]byte("Ok."))
 	})
 	mux.HandleFunc("/api/v2/", func(w http.ResponseWriter, r *http.Request) {
@@ -266,5 +271,18 @@ func TestReplacePrefix(t *testing.T) {
 		if (want == "") == ok || got != want {
 			t.Errorf("%s: got %q %v, want %q", in, got, ok, want)
 		}
+	}
+}
+
+func TestLogin204(t *testing.T) {
+	f := newFakeQbit(t, true)
+	f.noContent = true
+	c, _ := newClient(f.srv.URL, "admin", "pw")
+	if err := c.login(context.Background()); err != nil {
+		t.Fatalf("204 login: %v", err)
+	}
+	bad, _ := newClient(f.srv.URL, "admin", "nope")
+	if err := bad.login(context.Background()); err == nil {
+		t.Error("a wrong password must fail")
 	}
 }

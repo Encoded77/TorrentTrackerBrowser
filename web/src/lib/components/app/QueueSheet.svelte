@@ -15,6 +15,7 @@
 	import JobCard from './JobCard.svelte';
 	import EmptyState from './EmptyState.svelte';
 	import ShareDialog from './ShareDialog.svelte';
+	import MoveDialog from './MoveDialog.svelte';
 
 	let busy = $state<Record<string, boolean>>({});
 	let errors = $state<Record<string, string>>({});
@@ -22,6 +23,7 @@
 	let deleteFiles = $state(false);
 	let toPurge = $state<Job | null>(null);
 	let toShare = $state<Job | null>(null);
+	let toMove = $state<Job | null>(null);
 	const purgeSummary = $derived.by(() => {
 		const files = (toPurge?.files ?? []).filter((f) => f.state === 'done' || f.state === 'quarantined');
 		const first = files[0]?.path ?? '';
@@ -125,6 +127,7 @@
 							onrescan={() => run(job, () => api.rescanJob(job.id), s.jobRescanned)}
 							onpurge={() => (toPurge = job)}
 							onshare={() => (toShare = job)}
+							onmove={() => (toMove = job)}
 							ondelete={() => (toDelete = job)}
 						/>
 					{/each}
@@ -142,6 +145,7 @@
 								onrescan={() => {}}
 								onpurge={() => {}}
 								onshare={() => {}}
+								onmove={() => {}}
 								ondelete={() => (toDelete = job)}
 							/>
 						{/each}
@@ -187,3 +191,4 @@
 </Dialog.Root>
 
 <ShareDialog job={toShare} onclose={() => (toShare = null)} />
+<MoveDialog job={toMove} onclose={() => (toMove = null)} />

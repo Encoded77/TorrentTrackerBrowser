@@ -251,6 +251,11 @@ export const en: Dictionary = {
 	confirmPurgeBody: (count: number, size: string, folder: string) =>
 		`${count} file${count > 1 ? 's' : ''} (${size})${folder ? ` in the folder "${folder}"` : ''} will be deleted from the NAS, along with the engine copy and the queue entry. This cannot be undone.`,
 	jobPurged: 'Files deleted',
+	moveJob: 'Move',
+	moveTitle: 'Move the files',
+	moveFolder: 'Folder (e.g. the platform for a ROM: gba, snes, psx…)',
+	moveHint: 'A single file goes straight into this folder; several keep their tree.',
+	jobMoved: 'Files moved',
 	shareJob: 'Share',
 	shareTitle: 'Share link',
 	shareExpiry: 'Expires in',

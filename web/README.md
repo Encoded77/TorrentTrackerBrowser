@@ -6,8 +6,7 @@ SvelteKit 2 + Svelte 5 (runes) + Tailwind v4 + shadcn-svelte, built as a static 
 
 ## Run
 
-Node 24 is expected. On this machine it lives in `C:\Program Files\nodejs`; add it to `PATH`
-if it is not there already.
+Node 24 is expected.
 
 | Command | What it does |
 | --- | --- |

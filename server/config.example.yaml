@@ -50,6 +50,21 @@ storages:
     type: path
     label: Téléchargements
     root: /mnt/media/downloads/manual
+    # Optional: POSTed {storage, subdir, paths} when files land here (a finished job or a move),
+    # e.g. to have a library behind this folder index them right away.
+    # onDelivered: http://library-hook:8098/
+
+# Optional malware scanners: copy/adopt deliveries are scanned, infected files are
+# quarantined. storages limits a scanner to those storages (omitted = every storage).
+# maxSize must stay under ClamAV's 2 GiB per-file cap and within clamd's StreamMaxLength;
+# bigger files are "not scanned", except ZIP/RAR/7z archives, scanned entry by entry.
+# scanners:
+#   - id: clamav
+#     type: clamav
+#     address: clamd:3310
+#     maxSize: 2000MB
+#     timeout: 15m
+#     storages: [downloads]
 
 # Preselected engine, storage and delivery mode (copy | adopt | links).
 defaults:

@@ -144,7 +144,7 @@ export class AppState {
 
 	selectedRows = $derived(this.visibleRows.filter((r) => this.selection.has(r.key)));
 
-	// ---- Capabilities -------------------------------------------------------
+	// Capabilities
 
 	async loadCapabilities(): Promise<void> {
 		this.capsLoading = true;
@@ -180,7 +180,7 @@ export class AppState {
 		return !!id && !!this.caps?.storages.find((st) => st.id === id)?.scanned;
 	}
 
-	// ---- Search -------------------------------------------------------------
+	// Search
 
 	setCategories(next: string[]) {
 		this.categories = next;
@@ -300,7 +300,7 @@ export class AppState {
 		return v === undefined ? null : v;
 	}
 
-	// ---- Filters, sort, selection ------------------------------------------
+	// Filters, sort, selection
 
 	setFilters(patch: Partial<Filters>) {
 		this.filters = { ...this.filters, ...patch };
@@ -375,7 +375,7 @@ export class AppState {
 		else this.selection.clear();
 	}
 
-	// ---- File preview -------------------------------------------------------
+	// File preview
 
 	async toggleExpanded(row: ResultRow) {
 		if (this.expandedKey === row.key) {
@@ -409,7 +409,7 @@ export class AppState {
 		this.fileSelection[resultId] = [...cur].sort((a, b) => a - b);
 	}
 
-	// ---- Download dialog ----------------------------------------------------
+	// Download dialog
 
 	openDownload(rows: ResultRow[]) {
 		this.download = rows.map((row) => {
@@ -439,7 +439,7 @@ export class AppState {
 		this.download = null;
 	}
 
-	// ---- Jobs ---------------------------------------------------------------
+	// Jobs
 
 	setQueueOpen(open: boolean) {
 		this.queueOpen = open;
@@ -486,7 +486,7 @@ export class AppState {
 		this.jobs = this.jobs.filter((j) => j.id !== id);
 	}
 
-	// ---- History ------------------------------------------------------------
+	// History
 
 	pushHistory(q: string) {
 		const next = [q, ...this.history.filter((h) => h.toLowerCase() !== q.toLowerCase())].slice(0, HISTORY_MAX);

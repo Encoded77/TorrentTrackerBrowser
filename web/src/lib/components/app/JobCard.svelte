@@ -13,6 +13,7 @@
 	import FileXIcon from '@lucide/svelte/icons/file-x';
 	import Share2Icon from '@lucide/svelte/icons/share-2';
 	import UserIcon from '@lucide/svelte/icons/user';
+	import FolderInputIcon from '@lucide/svelte/icons/folder-input';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Progress } from '$lib/components/ui/progress/index.js';
@@ -31,6 +32,7 @@
 		onrescan,
 		onpurge,
 		onshare,
+		onmove,
 		ondelete
 	}: {
 		job: Job;
@@ -41,6 +43,7 @@
 		onrescan: () => void;
 		onpurge: () => void;
 		onshare: () => void;
+		onmove: () => void;
 		ondelete: () => void;
 	} = $props();
 
@@ -102,6 +105,8 @@
 	);
 
 	const canShare = $derived(!job.external && job.state === 'done' && !!job.storage && job.storage === app.caps?.shareStorage);
+
+	const canMove = $derived(!job.external && job.state === 'done' && job.mode === 'copy' && job.files.some((f) => f.state === 'done'));
 
 	const showProgress = $derived(
 		active || job.state === 'failed' || ((job.state === 'done' || job.state === 'infected') && !job.external)
@@ -212,6 +217,12 @@
 				<Button size="xs" variant="outline" onclick={() => app.openSend(job)} disabled={busy}>
 					<SendIcon />
 					{s.sendToStorage}
+				</Button>
+			{/if}
+			{#if canMove}
+				<Button size="xs" variant="outline" onclick={onmove} disabled={busy}>
+					<FolderInputIcon />
+					{s.moveJob}
 				</Button>
 			{/if}
 			{#if canShare}

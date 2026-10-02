@@ -477,3 +477,62 @@ func (stubEngine) ID() string                                { return "e" }
 func (stubEngine) Name() string                              { return "E" }
 func (stubEngine) Caps() core.EngineCaps                     { return core.EngineCaps{} }
 func (stubEngine) List(context.Context) ([]core.Item, error) { return nil, nil }
+
+func TestMoveJob(t *testing.T) {
+	reg := core.NewRegistry()
+	roots := map[string]string{}
+	for _, id := range []string{"shared", "roms"} {
+		roots[id] = t.TempDir()
+		st, _ := pathstorage.New(id, "", roots[id])
+		reg.AddStorage(st)
+	}
+	os.MkdirAll(filepath.Join(roots["shared"], "Pk"), 0o755)
+	os.WriteFile(filepath.Join(roots["shared"], "Pk", "red.gba"), []byte("rom"), 0o644)
+	os.MkdirAll(filepath.Join(roots["roms"], "gba"), 0o755)
+	os.WriteFile(filepath.Join(roots["roms"], "gba", "dup.gba"), []byte("x"), 0o644)
+	store := core.NewJobStore(filepath.Join(t.TempDir(), "jobs.json"), 10)
+	store.Add(&core.Job{ID: "j_1", Storage: "shared", Mode: core.ModeCopy, State: core.JobDone,
+		Files: []core.JobFile{{Path: "Pk/red.gba", State: core.FileDone}}})
+	store.Add(&core.Job{ID: "j_dup", Storage: "shared", Mode: core.ModeCopy, State: core.JobDone,
+		Files: []core.JobFile{{Path: "dup.gba", State: core.FileDone}}})
+	hooked := make(chan string, 1)
+	hook := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		hooked <- string(b)
+	}))
+	defer hook.Close()
+	runner := core.NewRunner(reg, store, core.NewWebhook(""), core.Limits{Jobs: 1})
+	runner.Delivered = map[string]string{"roms": hook.URL}
+	s := &Server{Config: &core.Config{}, Reg: reg, Runner: runner}
+	h := s.Handler(http.NotFoundHandler())
+
+	rec := do(h, "GET", "/api/storages/roms/dirs", "", nil)
+	if !strings.Contains(rec.Body.String(), `"gba"`) {
+		t.Errorf("dirs = %s", rec.Body.String())
+	}
+	if rec := do(h, "POST", "/api/jobs/j_dup/move", `{"storage":"roms","subdir":"gba"}`, mutating); rec.Code != http.StatusConflict {
+		t.Errorf("move onto an existing file = %d %s", rec.Code, rec.Body.String())
+	}
+	rec = do(h, "POST", "/api/jobs/j_1/move", `{"storage":"roms","subdir":"gba"}`, mutating)
+	if rec.Code != 200 {
+		t.Fatalf("move = %d %s", rec.Code, rec.Body.String())
+	}
+	if b, err := os.ReadFile(filepath.Join(roots["roms"], "gba", "red.gba")); err != nil || string(b) != "rom" {
+		t.Errorf("moved file: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(roots["shared"], "Pk")); !os.IsNotExist(err) {
+		t.Error("the emptied source folder must be gone")
+	}
+	j, _ := store.Get("j_1")
+	if j.Storage != "roms" || j.Subdir != "gba" || j.Files[0].Path != "gba/red.gba" {
+		t.Errorf("job after move = %+v", j)
+	}
+	select {
+	case b := <-hooked:
+		if !strings.Contains(b, `"paths":["gba/red.gba"]`) || !strings.Contains(b, `"storage":"roms"`) {
+			t.Errorf("onDelivered body = %s", b)
+		}
+	case <-time.After(5 * time.Second):
+		t.Error("onDelivered hook not called")
+	}
+}

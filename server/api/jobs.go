@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -289,4 +290,67 @@ func (s *Server) purgeJob(ctx context.Context, w http.ResponseWriter, id string)
 	default:
 		w.WriteHeader(http.StatusNoContent)
 	}
+}
+
+// moveJob moves a finished job's files to another storage and subdir.
+func (s *Server) moveJob(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if !s.ownJob(w, r, id) {
+		return
+	}
+	var b struct {
+		Storage string  `json:"storage"`
+		Subdir  *string `json:"subdir"`
+	}
+	if !readJSON(w, r, &b) {
+		return
+	}
+	if s.Reg.Storage(b.Storage) == nil {
+		writeError(w, http.StatusBadRequest, "unknown_storage", "unknown storage "+b.Storage)
+		return
+	}
+	if !s.storageAllowed(s.user(r), b.Storage) {
+		writeError(w, http.StatusForbidden, "storage_not_allowed", "storage "+b.Storage+" is not allowed")
+		return
+	}
+	subdir, err := core.SafeSubdir(strOf(b.Subdir))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "bad_subdir", err.Error())
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Minute) // a copy across filesystems
+	defer cancel()
+	j, err := s.Runner.Move(ctx, id, b.Storage, subdir)
+	switch {
+	case errors.Is(err, core.ErrJobNotFound):
+		writeError(w, http.StatusNotFound, "not_found", "unknown job")
+	case errors.Is(err, core.ErrNotMovable):
+		writeError(w, http.StatusConflict, "bad_state", err.Error())
+	case err != nil:
+		writeError(w, http.StatusConflict, "move_failed", err.Error())
+	default:
+		writeJSON(w, http.StatusOK, j.View())
+	}
+}
+
+// storageDirs lists a storage's top-level folders, to suggest a subdir.
+func (s *Server) storageDirs(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	st := s.Reg.Storage(id)
+	if st == nil || !s.storageAllowed(s.user(r), id) {
+		writeError(w, http.StatusNotFound, "not_found", "unknown storage")
+		return
+	}
+	entries, err := os.ReadDir(st.Root())
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "storage_error", err.Error())
+		return
+	}
+	dirs := []string{}
+	for _, e := range entries {
+		if e.IsDir() && !strings.HasPrefix(e.Name(), ".") {
+			dirs = append(dirs, e.Name())
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string][]string{"dirs": dirs})
 }

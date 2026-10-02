@@ -7,10 +7,10 @@ pluggable adapters declared in a YAML config; the UI renders whatever the backen
 
 - Backend: Go, single static binary, embeds the frontend, no database.
 - Frontend: SvelteKit (static), Svelte 5, Tailwind v4, shadcn-svelte.
-- First adapters: Prowlarr (source), TorBox and qBittorrent (engines), local path (storage), ClamAV
-  (optional malware scanner: infected deliveries are quarantined, see `scanners:` in PLAN.md).
+- Adapters: Prowlarr (source), TorBox and qBittorrent (engines), local path (storage), ClamAV
+  (optional malware scanner: infected deliveries are quarantined).
 
-See [PLAN.md](PLAN.md) for the design and [API.md](API.md) for the HTTP contract.
+See `server/config.example.yaml` for the configuration and [API.md](API.md) for the HTTP contract.
 
 ## Screenshots
 
@@ -32,13 +32,12 @@ The queue lists the app's jobs plus the items already on the engines, with send-
 
 <img src="docs/screenshots/mobile-dark.png" alt="Phone layout" width="300">
 
-
 ## Run in production (Docker)
 
 ```bash
 cd deploy
 cp ../.env.example .env            # secrets
-cp config.example.yaml config.yaml # adapters, storages, limits
+cp ../server/config.example.yaml config.yaml # adapters, storages, limits
 docker compose up -d --build
 ```
 

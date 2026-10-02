@@ -25,6 +25,7 @@ type Runner struct {
 	Lang      string // language of notification titles: "en" or "fr"
 	Limits    Limits
 	PollEvery time.Duration
+	Delivered map[string]string // storage id -> onDelivered URL
 
 	mu      sync.Mutex
 	running map[string]context.CancelFunc
@@ -437,6 +438,9 @@ func (r *Runner) finish(id string, res *ScanResult) error {
 	if ok && j.State == to {
 		title, msg, level := r.outcomeMessage(j)
 		r.Notifier.Notify(context.Background(), title, msg, level)
+		if to == JobDone {
+			r.notifyDelivered(j)
+		}
 	}
 	return nil
 }

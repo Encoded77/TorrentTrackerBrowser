@@ -56,6 +56,10 @@ func run(configPath string) error {
 	}
 	runner := core.NewRunner(reg, store, core.NewWebhook(cfg.Notify.Webhook), cfg.Limits)
 	runner.Lang = cfg.Notify.Lang
+	runner.Delivered = map[string]string{}
+	for _, st := range cfg.Storages {
+		runner.Delivered[st.ID()] = core.StringOpt(st, "onDelivered")
+	}
 
 	srv := &api.Server{
 		Config:   cfg,

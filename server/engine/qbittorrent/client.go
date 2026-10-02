@@ -54,7 +54,10 @@ func (c *client) login(ctx context.Context) error {
 	}
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 	resp.Body.Close()
-	if resp.StatusCode != http.StatusOK || !strings.HasPrefix(strings.TrimSpace(string(body)), "Ok") {
+	// qBittorrent < 5.2 answers 200 "Ok." (or 200 "Fails."); 5.2+ answers 204 on success.
+	ok := resp.StatusCode == http.StatusNoContent ||
+		resp.StatusCode == http.StatusOK && strings.HasPrefix(strings.TrimSpace(string(body)), "Ok")
+	if !ok {
 		return fmt.Errorf("qbittorrent login failed: HTTP %d %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 	c.mu.Lock()
