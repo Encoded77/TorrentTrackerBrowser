@@ -104,6 +104,11 @@ export const api = {
 
 	retryJob: (id: string) => request<Job>(`/api/jobs/${encodeURIComponent(id)}/retry`, json({})),
 
+	rescanJob: (id: string) => request<Job>(`/api/jobs/${encodeURIComponent(id)}/rescan`, json({})),
+
+	purgeJob: (id: string) =>
+		request<void>(`/api/jobs/${encodeURIComponent(id)}?purge=true`, { method: 'DELETE' }),
+
 	deleteJob: (id: string, deleteFiles = false) =>
 		request<void>(
 			`/api/jobs/${encodeURIComponent(id)}${deleteFiles ? '?deleteFiles=true' : ''}`,
@@ -112,6 +117,9 @@ export const api = {
 
 	sendJob: (id: string, body: SendJobBody) =>
 		request<Job>(`/api/jobs/${encodeURIComponent(id)}/send`, json(body)),
+
+	shareJob: (id: string, body: { days: number; password?: string }) =>
+		request<{ url: string }>(`/api/jobs/${encodeURIComponent(id)}/share`, json(body)),
 
 	jobFileUrl: (jobId: string, path: string) =>
 		`/api/jobs/${encodeURIComponent(jobId)}/files/${path.split('/').map(encodeURIComponent).join('/')}`

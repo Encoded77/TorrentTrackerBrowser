@@ -133,6 +133,9 @@ func (r *Runner) Cancel(ctx context.Context, id string) (Job, error) {
 	if j.State.Terminal() {
 		return j, fmt.Errorf("job is already %s", j.State)
 	}
+	if j.State == JobScanning {
+		return j, errors.New("the files are delivered and being scanned; the scan ends on its own")
+	}
 	j, _ = r.Store.SetState(id, JobCancelled)
 	r.mu.Lock()
 	cancel := r.running[id]
@@ -231,6 +234,9 @@ func (r *Runner) reconcile(ctx context.Context) {
 		if j.State.Terminal() {
 			continue
 		}
+		if j.State == JobScanning {
+			continue // files are delivered; the scan resumes without the engine
+		}
 		if j.Item.ID == "" {
 			r.Store.Update(j.ID, func(j *Job) { j.State = JobQueued })
 			continue
@@ -281,7 +287,7 @@ func (r *Runner) run(ctx context.Context, id string) {
 	}
 	if err != nil {
 		r.fail(id, err, IsRetryable(err))
-		r.Notifier.Notify(context.Background(), r.notifyTitle(true), j.Name+": "+err.Error(), true)
+		r.Notifier.Notify(context.Background(), r.notifyTitle(true), j.Name+": "+err.Error(), LevelFailed)
 	}
 }
 
@@ -327,6 +333,9 @@ func (r *Runner) pipeline(ctx context.Context, id string) error {
 	j, ok := r.Store.Get(id)
 	if !ok {
 		return ErrJobNotFound
+	}
+	if j.State == JobScanning {
+		return r.scanAndFinish(ctx, id) // resumed after a restart, or a rescan
 	}
 	eng := r.Reg.Engine(j.Engine)
 	if eng == nil {
@@ -390,7 +399,7 @@ func (r *Runner) pipeline(ctx context.Context, id string) error {
 			}
 			j.Progress = 1
 		})
-		return r.finish(id)
+		return r.finish(id, nil)
 	case ModeAdopt:
 		if err := r.setState(id, JobCopying); err != nil {
 			return err
@@ -406,23 +415,28 @@ func (r *Runner) pipeline(ctx context.Context, id string) error {
 			return err
 		}
 	}
-	if r.Reg.EngineOptions(j.Engine).RemoveAfterCopy && j.Owned {
-		if err := eng.Remove(ctx, j.Item, false); err != nil && !errors.Is(err, ErrNotFound) {
-			slog.Warn("job: remove engine item after copy", "job", id, "err", err)
-		}
-		r.invalidateExternal()
-	}
-	return r.finish(id)
+	return r.scanAndFinish(ctx, id)
 }
 
-func (r *Runner) finish(id string) error {
+// finish ends a delivered job: done, or infected when res found malware.
+// res is nil when no scan ran.
+func (r *Runner) finish(id string, res *ScanResult) error {
+	to := JobDone
+	if res != nil && res.Status == ScanInfected {
+		to = JobInfected
+	}
 	j, ok := r.Store.Update(id, func(j *Job) {
-		if CanTransition(j.State, JobDone) {
-			j.State, j.Progress, j.Speed, j.ETA = JobDone, 1, 0, 0
+		if !CanTransition(j.State, to) {
+			return
 		}
+		if res != nil {
+			j.Scan = res
+		}
+		j.State, j.Progress, j.Speed, j.ETA = to, 1, 0, 0
 	})
-	if ok && j.State == JobDone {
-		r.Notifier.Notify(context.Background(), r.notifyTitle(false), j.Name, false)
+	if ok && j.State == to {
+		title, msg, level := r.outcomeMessage(j)
+		r.Notifier.Notify(context.Background(), title, msg, level)
 	}
 	return nil
 }

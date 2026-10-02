@@ -190,3 +190,74 @@ func TestNewCreatesMissingRoot(t *testing.T) {
 		t.Fatal("missing parent must still fail")
 	}
 }
+
+func TestOpenReadsDeliveredFile(t *testing.T) {
+	root := t.TempDir()
+	s, _ := New("dl", "", root)
+	os.MkdirAll(filepath.Join(root, "Game"), 0o755)
+	os.WriteFile(filepath.Join(root, "Game", "setup.exe"), []byte("MZ..."), 0o644)
+	rc, err := s.Open(context.Background(), "Game/setup.exe")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := io.ReadAll(rc)
+	rc.Close()
+	if string(b) != "MZ..." {
+		t.Errorf("content = %q", b)
+	}
+	if _, err := s.Open(context.Background(), "../etc/passwd"); err == nil {
+		t.Error("Open must refuse traversal")
+	}
+	if _, err := s.Open(context.Background(), "Game/missing.exe"); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("missing file err = %v", err)
+	}
+}
+
+func TestMoveIntoQuarantine(t *testing.T) {
+	root := t.TempDir()
+	s, _ := New("dl", "", root)
+	os.MkdirAll(filepath.Join(root, "Game"), 0o755)
+	os.WriteFile(filepath.Join(root, "Game", "crack.exe"), []byte("bad"), 0o644)
+	if err := s.Move(context.Background(), "Game/crack.exe", ".quarantine/j_1/Game/crack.exe"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "Game", "crack.exe")); !errors.Is(err, os.ErrNotExist) {
+		t.Error("source should be gone")
+	}
+	if b, _ := os.ReadFile(filepath.Join(root, ".quarantine", "j_1", "Game", "crack.exe")); string(b) != "bad" {
+		t.Errorf("quarantined content = %q", b)
+	}
+	if err := s.Move(context.Background(), "Game/x", "../outside"); err == nil {
+		t.Error("Move must refuse traversal")
+	}
+}
+
+func TestDeleteRemovesFileAndEmptyParents(t *testing.T) {
+	root := t.TempDir()
+	s, _ := New("dl", "", root)
+	ctx := context.Background()
+	os.MkdirAll(filepath.Join(root, "Game", "Setup", "bin"), 0o755)
+	os.WriteFile(filepath.Join(root, "Game", "Setup", "bin", "crack.exe"), []byte("x"), 0o644)
+	os.WriteFile(filepath.Join(root, "Game", "readme.txt"), []byte("y"), 0o644)
+	if err := s.Delete(ctx, "Game/Setup/bin/crack.exe"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "Game", "Setup")); !errors.Is(err, os.ErrNotExist) {
+		t.Error("empty parents should be removed")
+	}
+	if _, err := os.Stat(filepath.Join(root, "Game", "readme.txt")); err != nil {
+		t.Error("a non-empty parent must stay")
+	}
+	if err := s.Delete(ctx, "Game/readme.txt"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(root); err != nil {
+		t.Error("the storage root itself must never be removed")
+	}
+	if err := s.Delete(ctx, "Game/missing.exe"); err != nil {
+		t.Errorf("a file already gone is not an error: %v", err)
+	}
+	if err := s.Delete(ctx, "../outside"); err == nil {
+		t.Error("Delete must refuse traversal")
+	}
+}

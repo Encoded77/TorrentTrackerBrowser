@@ -206,7 +206,9 @@ export const fr = {
 		fetching: 'Récupération',
 		ready: 'Prêt',
 		copying: 'Copie',
+		scanning: 'Analyse antivirus',
 		done: 'Terminé',
+		infected: 'Infecté',
 		failed: 'Échec',
 		cancelled: 'Annulé'
 	} as Record<string, string>,
@@ -215,10 +217,26 @@ export const fr = {
 		copying: 'copie',
 		done: 'terminé',
 		failed: 'échec',
-		skipped: 'ignoré'
+		skipped: 'ignoré',
+		quarantined: 'quarantaine'
 	} as Record<string, string>,
 	cancelJob: 'Annuler',
 	retryJob: 'Réessayer',
+	rescanJob: 'Réanalyser',
+	jobRescanned: 'Analyse relancée',
+	scanStatus: {
+		clean: 'Analysé',
+		infected: 'Infecté',
+		skipped: 'Non analysé',
+		error: 'Non analysé'
+	} as Record<string, string>,
+	scanHint: {
+		clean: 'Aucune menace détectée par ClamAV',
+		infected: `ClamAV a détecté une menace${NB}: fichier(s) mis en quarantaine`,
+		skipped: 'Fichier(s) trop volumineux pour être analysés',
+		error: "L'antivirus n'a pas pu analyser tous les fichiers"
+	} as Record<string, string>,
+	quarantinedTo: (p: string) => `quarantaine${NB}: ${p}`,
 	deleteJob: 'Supprimer',
 	sendToStorage: 'Envoyer vers un stockage',
 	openLink: 'Ouvrir',
@@ -231,6 +249,20 @@ export const fr = {
 	jobCancelled: 'Téléchargement annulé',
 	jobRetried: 'Téléchargement relancé',
 	jobDeleted: 'Retiré de la file',
+	purgeJob: 'Supprimer les fichiers',
+	confirmPurgeTitle: 'Supprimer les fichiers ?',
+	confirmPurgeBody: (count: number, size: string, folder: string) =>
+		`${count} fichier${count > 1 ? 's' : ''} (${size})${folder ? ` du dossier « ${folder} »` : ''} ${count > 1 ? 'seront supprimés' : 'sera supprimé'} du NAS, avec la copie sur le moteur et l'entrée de la file. Action irréversible.`,
+	jobPurged: 'Fichiers supprimés',
+	shareJob: 'Partager',
+	shareTitle: 'Lien de partage',
+	shareExpiry: 'Expire dans',
+	shareDays: (n: number) => (n === 0 ? 'jamais' : n === 1 ? '1 jour' : `${n} jours`),
+	sharePassword: 'Mot de passe (facultatif)',
+	shareCreate: 'Créer le lien',
+	shareHint: "Lien public : n'importe qui l'ayant peut télécharger. Les fichiers ne sont pas copiés.",
+	copyLink: 'Copier',
+	linkCopied: 'Lien copié',
 	eta: (h: string) => `reste ${h}`,
 	speed: (h: string) => `${h}/s`,
 	modeLabel: {

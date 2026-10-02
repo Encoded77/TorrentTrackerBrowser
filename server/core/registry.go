@@ -2,6 +2,7 @@ package core
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 )
 
@@ -11,6 +12,7 @@ var (
 	sourceCtors  = map[string]func(cfg map[string]any) (Source, error){}
 	engineCtors  = map[string]func(cfg map[string]any) (Engine, error){}
 	storageCtors = map[string]func(cfg map[string]any) (Storage, error){}
+	scannerCtors = map[string]func(cfg map[string]any) (Scanner, error){}
 )
 
 // RegisterSource registers a Source constructor for a config type.
@@ -26,6 +28,11 @@ func RegisterEngine(typ string, ctor func(cfg map[string]any) (Engine, error)) {
 // RegisterStorage registers a Storage constructor for a config type.
 func RegisterStorage(typ string, ctor func(cfg map[string]any) (Storage, error)) {
 	storageCtors[typ] = ctor
+}
+
+// RegisterScanner registers a Scanner constructor for a config type.
+func RegisterScanner(typ string, ctor func(cfg map[string]any) (Scanner, error)) {
+	scannerCtors[typ] = ctor
 }
 
 // RegisteredTypes lists the known adapter types (for error messages).
@@ -55,6 +62,9 @@ type Registry struct {
 	Sources  []Source
 	Engines  []Engine
 	Storages []Storage
+	Scanners []Scanner
+
+	scannerStorages [][]string // parallel to Scanners; empty = every storage
 
 	sources    map[string]Source
 	engines    map[string]Engine
@@ -109,6 +119,17 @@ func BuildRegistry(c *Config) (*Registry, error) {
 		}
 		r.AddStorage(s)
 	}
+	for _, cfg := range c.Scanners {
+		ctor, ok := scannerCtors[cfg.Type()]
+		if !ok {
+			return nil, fmt.Errorf("scanner %q: unknown type %q", cfg.ID(), cfg.Type())
+		}
+		s, err := ctor(cfg)
+		if err != nil {
+			return nil, fmt.Errorf("scanner %q: %w", cfg.ID(), err)
+		}
+		r.AddScanner(s, StringListOpt(cfg, "storages"))
+	}
 	return r, nil
 }
 
@@ -142,3 +163,20 @@ func (r *Registry) Storage(id string) Storage { return r.storages[id] }
 
 // EngineOptions returns the runner-side options of an engine.
 func (r *Registry) EngineOptions(id string) EngineOptions { return r.engineOpts[id] }
+
+// AddScanner registers a built scanner; storages limits it to those storage
+// ids (nil or empty = every storage).
+func (r *Registry) AddScanner(s Scanner, storages []string) {
+	r.Scanners = append(r.Scanners, s)
+	r.scannerStorages = append(r.scannerStorages, storages)
+}
+
+// ScannerFor returns the first scanner covering a storage, nil when none.
+func (r *Registry) ScannerFor(storageID string) Scanner {
+	for i, s := range r.Scanners {
+		if len(r.scannerStorages[i]) == 0 || slices.Contains(r.scannerStorages[i], storageID) {
+			return s
+		}
+	}
+	return nil
+}

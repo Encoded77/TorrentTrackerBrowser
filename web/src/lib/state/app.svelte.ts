@@ -75,7 +75,7 @@ export type DownloadTarget =
 
 export type FilesState = { state: 'loading' } | { state: 'error'; message: string } | { state: 'ok'; files: TorrentFile[] };
 
-const ACTIVE_STATES = new Set(['queued', 'adding', 'waitingSelection', 'fetching', 'copying']);
+const ACTIVE_STATES = new Set(['queued', 'adding', 'waitingSelection', 'fetching', 'copying', 'scanning']);
 const POLL_MS = 3000;
 const HISTORY_MAX = 20;
 
@@ -174,6 +174,10 @@ export class AppState {
 	storageLabel(id: string | null): string {
 		if (!id) return '';
 		return this.caps?.storages.find((st) => st.id === id)?.label ?? id;
+	}
+
+	storageScanned(id: string | null): boolean {
+		return !!id && !!this.caps?.storages.find((st) => st.id === id)?.scanned;
 	}
 
 	// ---- Search -------------------------------------------------------------

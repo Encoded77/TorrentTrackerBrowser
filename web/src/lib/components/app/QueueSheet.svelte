@@ -11,13 +11,26 @@
 	import type { Job } from '$lib/api/types';
 	import { app } from '$lib/state/app.svelte';
 	import { s } from '$lib/strings';
+	import { humanSize } from '$lib/format';
 	import JobCard from './JobCard.svelte';
 	import EmptyState from './EmptyState.svelte';
+	import ShareDialog from './ShareDialog.svelte';
 
 	let busy = $state<Record<string, boolean>>({});
 	let errors = $state<Record<string, string>>({});
 	let toDelete = $state<Job | null>(null);
 	let deleteFiles = $state(false);
+	let toPurge = $state<Job | null>(null);
+	let toShare = $state<Job | null>(null);
+	const purgeSummary = $derived.by(() => {
+		const files = (toPurge?.files ?? []).filter((f) => f.state === 'done' || f.state === 'quarantined');
+		const first = files[0]?.path ?? '';
+		return {
+			count: files.length,
+			size: humanSize(files.reduce((a, f) => a + f.size, 0)),
+			folder: first.includes('/') ? first.split('/')[0] : ''
+		};
+	});
 
 	const own = $derived(app.jobs.filter((j) => !j.external));
 	const external = $derived(app.jobs.filter((j) => j.external));
@@ -54,6 +67,20 @@
 			s.jobDeleted
 		);
 		deleteFiles = false;
+	}
+
+	async function confirmPurge() {
+		const job = toPurge;
+		if (!job) return;
+		toPurge = null;
+		await run(
+			job,
+			async () => {
+				await api.purgeJob(job.id);
+				app.removeJob(job.id);
+			},
+			s.jobPurged
+		);
 	}
 </script>
 
@@ -95,6 +122,9 @@
 							error={errors[job.id] ?? null}
 							oncancel={() => run(job, () => api.cancelJob(job.id), s.jobCancelled)}
 							onretry={() => run(job, () => api.retryJob(job.id), s.jobRetried)}
+							onrescan={() => run(job, () => api.rescanJob(job.id), s.jobRescanned)}
+							onpurge={() => (toPurge = job)}
+							onshare={() => (toShare = job)}
 							ondelete={() => (toDelete = job)}
 						/>
 					{/each}
@@ -109,6 +139,9 @@
 								error={errors[job.id] ?? null}
 								oncancel={() => {}}
 								onretry={() => {}}
+								onrescan={() => {}}
+								onpurge={() => {}}
+								onshare={() => {}}
 								ondelete={() => (toDelete = job)}
 							/>
 						{/each}
@@ -137,3 +170,20 @@
 		</Dialog.Footer>
 	</Dialog.Content>
 </Dialog.Root>
+
+<Dialog.Root open={!!toPurge} onOpenChange={(o) => !o && (toPurge = null)}>
+	<Dialog.Content class="sm:max-w-sm">
+		<Dialog.Header>
+			<Dialog.Title>{s.confirmPurgeTitle}</Dialog.Title>
+			<Dialog.Description class="break-words">
+				{s.confirmPurgeBody(purgeSummary.count, purgeSummary.size, purgeSummary.folder)}
+			</Dialog.Description>
+		</Dialog.Header>
+		<Dialog.Footer>
+			<Button variant="outline" onclick={() => (toPurge = null)}>{s.cancel}</Button>
+			<Button variant="destructive" onclick={confirmPurge}>{s.purgeJob}</Button>
+		</Dialog.Footer>
+	</Dialog.Content>
+</Dialog.Root>
+
+<ShareDialog job={toShare} onclose={() => (toShare = null)} />

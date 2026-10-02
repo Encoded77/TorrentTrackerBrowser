@@ -44,6 +44,22 @@ type NotifyConfig struct {
 	Lang    string `yaml:"lang"` // "en" (default) or "fr": language of the notification titles
 }
 
+// UsersConfig turns on per-user queues. The reverse proxy authenticates the
+// user and names them in Header; a request without it is the operator, who
+// sees every job. A named user sees and acts on their own jobs only, and may
+// deliver to Storages only (empty = every storage).
+type UsersConfig struct {
+	Header   string   `yaml:"header"`
+	Storages []string `yaml:"storages"`
+}
+
+// ShareConfig turns on "share" for finished jobs of one storage: the delivered
+// paths (relative to that storage) are POSTed to URL, which answers a link.
+type ShareConfig struct {
+	URL     string `yaml:"url"`
+	Storage string `yaml:"storage"`
+}
+
 // Config is the whole YAML file.
 type Config struct {
 	Listen       string          `yaml:"listen"`
@@ -53,9 +69,12 @@ type Config struct {
 	Sources      []AdapterConfig `yaml:"sources"`
 	Engines      []AdapterConfig `yaml:"engines"`
 	Storages     []AdapterConfig `yaml:"storages"`
+	Scanners     []AdapterConfig `yaml:"scanners"`
 	Defaults     Defaults        `yaml:"defaults"`
 	Limits       Limits          `yaml:"limits"`
 	Notify       NotifyConfig    `yaml:"notify"`
+	Users        UsersConfig     `yaml:"users"`
+	Share        ShareConfig     `yaml:"share"`
 }
 
 var envRef = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
@@ -155,6 +174,24 @@ func (c *Config) validate() error {
 	if err := check("storage", c.Storages); err != nil {
 		return err
 	}
+	if err := check("scanner", c.Scanners); err != nil {
+		return err
+	}
+	for _, sc := range c.Scanners {
+		for _, st := range StringListOpt(sc, "storages") {
+			if ids[st] != "storage" {
+				return fmt.Errorf("scanner %q: storages lists %q, not a configured storage", sc.ID(), st)
+			}
+		}
+	}
+	for _, st := range c.Users.Storages {
+		if ids[st] != "storage" {
+			return fmt.Errorf("users.storages lists %q, not a configured storage", st)
+		}
+	}
+	if c.Share.URL != "" && ids[c.Share.Storage] != "storage" {
+		return fmt.Errorf("share.storage %q is not a configured storage", c.Share.Storage)
+	}
 	if c.Defaults.Engine != "" && ids[c.Defaults.Engine] != "engine" {
 		return fmt.Errorf("defaults.engine %q is not a configured engine", c.Defaults.Engine)
 	}
@@ -215,6 +252,19 @@ func StringMapOpt(cfg map[string]any, key string) map[string]string {
 		}
 	default:
 		return nil
+	}
+	return out
+}
+
+// StringListOpt reads a list-of-strings option (nil when absent).
+func StringListOpt(cfg map[string]any, key string) []string {
+	list, ok := cfg[key].([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]string, 0, len(list))
+	for _, v := range list {
+		out = append(out, StringOpt(map[string]any{"v": v}, "v"))
 	}
 	return out
 }

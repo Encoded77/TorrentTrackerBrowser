@@ -48,6 +48,7 @@ export interface Storage {
 	id: string;
 	label: string;
 	free: number;
+	scanned: boolean; // a malware scanner covers this storage
 }
 
 export interface Capabilities {
@@ -57,6 +58,11 @@ export interface Capabilities {
 	categories: Category[];
 	defaults: { engine: string; storage: string; mode: DeliveryMode };
 	languages: Language[];
+	scanner: boolean;
+	/** Name from the proxy's user header; null = the operator, who sees every job. */
+	user: string | null;
+	/** Storage whose finished jobs can be shared; null = sharing off. */
+	shareStorage: string | null;
 }
 
 export interface Result {
@@ -119,11 +125,29 @@ export type JobState =
 	| 'fetching'
 	| 'ready'
 	| 'copying'
+	| 'scanning'
 	| 'done'
+	| 'infected'
 	| 'failed'
 	| 'cancelled';
 
-export type JobFileState = 'pending' | 'copying' | 'done' | 'failed' | 'skipped';
+export type JobFileState = 'pending' | 'copying' | 'done' | 'failed' | 'skipped' | 'quarantined';
+
+export type ScanStatus = 'clean' | 'infected' | 'skipped' | 'error';
+
+export interface ScanFinding {
+	path: string;
+	status: ScanStatus;
+	signature?: string;
+	reason?: string;
+	quarantine?: string;
+}
+
+export interface ScanResult {
+	status: ScanStatus;
+	findings: ScanFinding[];
+	scannedAt: string;
+}
 
 export interface JobFile {
 	path: string;
@@ -151,6 +175,8 @@ export interface Job {
 	retryable: boolean;
 	files: JobFile[];
 	external: boolean;
+	scan: ScanResult | null;
+	owner: string | null;
 }
 
 export interface CreateJobBody {

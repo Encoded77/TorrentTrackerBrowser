@@ -20,6 +20,9 @@ import (
 // engine has one, else a Range-capable stream from the local path or the
 // engine's Open.
 func (s *Server) jobFile(w http.ResponseWriter, r *http.Request) {
+	if !s.ownJob(w, r, r.PathValue("id")) {
+		return
+	}
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	eng, f, err := s.Runner.ResolveFile(ctx, r.PathValue("id"), r.PathValue("path"))
 	cancel()

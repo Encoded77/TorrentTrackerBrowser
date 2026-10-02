@@ -8,12 +8,14 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Encoded77/TorrentTrackerBrowser/server/core"
+	pathstorage "github.com/Encoded77/TorrentTrackerBrowser/server/storage/path"
 )
 
 // fakeSource answers one indexer with one result.
@@ -302,3 +304,176 @@ func TestStreamRange(t *testing.T) {
 		t.Errorf("out of range = %d", rec.Code)
 	}
 }
+
+func TestRescanRouteAndScannerCapability(t *testing.T) {
+	h := newServer(t, nil)
+	if rec := do(h, "POST", "/api/jobs/j_nope/rescan", "{}", mutating); rec.Code != http.StatusNotFound {
+		t.Errorf("rescan unknown job = %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := do(h, "POST", "/api/jobs/j_nope/rescan", "{}", nil); rec.Code == http.StatusNotFound || rec.Code < 400 {
+		t.Errorf("rescan without the mutation headers must be refused by the guard, got %d", rec.Code)
+	}
+	rec := do(h, "GET", "/api/capabilities", "", nil)
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `"scanner":false`) {
+		t.Errorf("capabilities = %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+type nopScanner struct{}
+
+func (nopScanner) ID() string     { return "av" }
+func (nopScanner) MaxSize() int64 { return 1 << 30 }
+func (nopScanner) Scan(context.Context, string, io.Reader, int64) (core.Verdict, error) {
+	return core.Verdict{Status: core.ScanClean}, nil
+}
+
+// The UI offers "rescan" only on storages a scanner covers.
+func TestCapabilitiesReportScannedStorages(t *testing.T) {
+	reg := core.NewRegistry()
+	for _, id := range []string{"shared", "movies"} {
+		st, err := pathstorage.New(id, "", filepath.Join(t.TempDir(), id))
+		if err != nil {
+			t.Fatal(err)
+		}
+		reg.AddStorage(st)
+	}
+	reg.AddScanner(nopScanner{}, []string{"shared"})
+	cfg := &core.Config{}
+	store := core.NewJobStore(filepath.Join(t.TempDir(), "jobs.json"), 10)
+	s := &Server{Config: cfg, Reg: reg, Runner: core.NewRunner(reg, store, core.NewWebhook(""), core.Limits{Jobs: 1})}
+	rec := do(s.Handler(http.NotFoundHandler()), "GET", "/api/capabilities", "", nil)
+	var v struct {
+		Scanner  bool `json:"scanner"`
+		Storages []struct {
+			ID      string `json:"id"`
+			Scanned bool   `json:"scanned"`
+		} `json:"storages"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &v); err != nil {
+		t.Fatal(err, rec.Body.String())
+	}
+	got := map[string]bool{}
+	for _, st := range v.Storages {
+		got[st.ID] = st.Scanned
+	}
+	if !v.Scanner || !got["shared"] || got["movies"] || len(got) != 2 {
+		t.Errorf("capabilities = %s", rec.Body.String())
+	}
+}
+
+func TestDeleteWithPurge(t *testing.T) {
+	reg := core.NewRegistry()
+	root := t.TempDir()
+	st, _ := pathstorage.New("dl", "", root)
+	reg.AddStorage(st)
+	store := core.NewJobStore(filepath.Join(t.TempDir(), "jobs.json"), 10)
+	store.Add(&core.Job{ID: "j_done", Storage: "dl", State: core.JobDone, Files: []core.JobFile{}})
+	store.Add(&core.Job{ID: "j_cancel", Storage: "dl", State: core.JobCancelled,
+		Files: []core.JobFile{{Path: "Game/a.exe", State: core.FileDone}}})
+	os.MkdirAll(filepath.Join(root, "Game"), 0o755)
+	os.WriteFile(filepath.Join(root, "Game", "a.exe"), []byte("x"), 0o644)
+	s := &Server{Config: &core.Config{}, Reg: reg, Runner: core.NewRunner(reg, store, core.NewWebhook(""), core.Limits{Jobs: 1})}
+	h := s.Handler(http.NotFoundHandler())
+	if rec := do(h, "DELETE", "/api/jobs/j_done?purge=true", "", mutating); rec.Code != http.StatusConflict {
+		t.Errorf("purge of a done job = %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := do(h, "DELETE", "/api/jobs/j_nope?purge=true", "", mutating); rec.Code != http.StatusNotFound {
+		t.Errorf("purge of an unknown job = %d", rec.Code)
+	}
+	if rec := do(h, "DELETE", "/api/jobs/j_cancel?purge=true", "", mutating); rec.Code != http.StatusNoContent {
+		t.Fatalf("purge = %d %s", rec.Code, rec.Body.String())
+	}
+	if _, err := os.Stat(filepath.Join(root, "Game")); !os.IsNotExist(err) {
+		t.Error("the cancelled job's files (and the emptied folder) must be gone")
+	}
+}
+
+func TestUsersAndShare(t *testing.T) {
+	var got shareRequest
+	share := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewDecoder(r.Body).Decode(&got)
+		w.Write([]byte(`{"url":"https://share.example/s/abc"}`))
+	}))
+	defer share.Close()
+	reg := core.NewRegistry()
+	for _, id := range []string{"shared", "private"} {
+		st, _ := pathstorage.New(id, "", filepath.Join(t.TempDir(), id))
+		reg.AddStorage(st)
+	}
+	reg.AddEngine(stubEngine{}, core.EngineOptions{})
+	store := core.NewJobStore(filepath.Join(t.TempDir(), "jobs.json"), 10)
+	store.Add(&core.Job{ID: "j_op", Storage: "shared", State: core.JobDone, Files: []core.JobFile{{Path: "op.iso", State: core.FileDone}}})
+	store.Add(&core.Job{ID: "j_ann", Owner: "ann", Name: "Ann's", Storage: "shared", State: core.JobDone,
+		Files: []core.JobFile{{Path: "A/1.mkv", State: core.FileDone}, {Path: "A/2.mkv", State: core.FileQuarantined}}})
+	cfg := &core.Config{Users: core.UsersConfig{Header: "X-Remote-User", Storages: []string{"shared"}},
+		Share: core.ShareConfig{URL: share.URL, Storage: "shared"}, Defaults: core.Defaults{Storage: "private"}}
+	s := &Server{Config: cfg, Reg: reg, Runner: core.NewRunner(reg, store, core.NewWebhook(""), core.Limits{Jobs: 1})}
+	h := s.Handler(http.NotFoundHandler())
+	as := func(user string, hdr map[string]string) map[string]string {
+		out := map[string]string{"X-Remote-User": user}
+		for k, v := range hdr {
+			out[k] = v
+		}
+		return out
+	}
+
+	ids := func(user string) []string {
+		var v struct{ Jobs []core.JobView }
+		json.Unmarshal(do(h, "GET", "/api/jobs", "", as(user, nil)).Body.Bytes(), &v)
+		var out []string
+		for _, j := range v.Jobs {
+			out = append(out, j.ID)
+		}
+		return out
+	}
+	if got := ids("ann"); len(got) != 1 || got[0] != "j_ann" {
+		t.Errorf("ann sees %v", got)
+	}
+	if got := ids("bob"); len(got) != 0 {
+		t.Errorf("bob sees %v", got)
+	}
+	if got := ids(""); len(got) != 2 {
+		t.Errorf("operator sees %v", got)
+	}
+	if rec := do(h, "DELETE", "/api/jobs/j_ann", "", as("bob", mutating)); rec.Code != http.StatusNotFound {
+		t.Errorf("bob deleting ann's job = %d", rec.Code)
+	}
+	if rec := do(h, "GET", "/api/jobs/j_op/files/op.iso", "", as("ann", nil)); rec.Code != http.StatusNotFound {
+		t.Errorf("ann reading the operator's file = %d", rec.Code)
+	}
+
+	var caps struct {
+		User     *string `json:"user"`
+		Share    *string `json:"shareStorage"`
+		Defaults struct{ Storage string }
+		Storages []struct{ ID string }
+	}
+	json.Unmarshal(do(h, "GET", "/api/capabilities", "", as("ann", nil)).Body.Bytes(), &caps)
+	if caps.User == nil || *caps.User != "ann" || caps.Share == nil || len(caps.Storages) != 1 || caps.Defaults.Storage != "shared" {
+		t.Errorf("ann's capabilities = %+v", caps)
+	}
+
+	rec := do(h, "POST", "/api/jobs", `{"payloadId":"x","engine":"e","storage":"private","mode":"copy"}`, as("ann", mutating))
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("ann creating a job in private = %d %s", rec.Code, rec.Body.String())
+	}
+
+	if rec := do(h, "POST", "/api/jobs/j_op/share", `{"days":7}`, as("ann", mutating)); rec.Code != http.StatusNotFound {
+		t.Errorf("ann sharing the operator's job = %d", rec.Code)
+	}
+	rec = do(h, "POST", "/api/jobs/j_ann/share", `{"days":7,"password":"pw"}`, as("ann", mutating))
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), "share.example/s/abc") {
+		t.Fatalf("share = %d %s", rec.Code, rec.Body.String())
+	}
+	if len(got.Paths) != 1 || got.Paths[0] != "A/1.mkv" || got.Days != 7 || got.Password != "pw" || got.Description != "TTB, ann" {
+		t.Errorf("share request = %+v", got)
+	}
+}
+
+// stubEngine answers what the job handlers under test ask; any other call panics.
+type stubEngine struct{ core.Engine }
+
+func (stubEngine) ID() string                                { return "e" }
+func (stubEngine) Name() string                              { return "E" }
+func (stubEngine) Caps() core.EngineCaps                     { return core.EngineCaps{} }
+func (stubEngine) List(context.Context) ([]core.Item, error) { return nil, nil }

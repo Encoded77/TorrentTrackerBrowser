@@ -20,13 +20,17 @@ func TestWebhookUsesNtfyTopicConvention(t *testing.T) {
 	defer srv.Close()
 
 	n := NewWebhook(srv.URL + "/homelab?auth=abc")
-	n.Notify(context.Background(), "Download failed", "Dune: boom", true)
+	n.Notify(context.Background(), "Download failed", "Dune: boom", LevelFailed)
 	if gotBody != "Dune: boom" || gotTitle != "Download failed" || gotPrio != "4" || gotTags != "torrent" || gotQuery != "auth=abc" {
 		t.Errorf("request = body %q title %q prio %q tags %q query %q", gotBody, gotTitle, gotPrio, gotTags, gotQuery)
 	}
-	n.Notify(context.Background(), "Download finished", "x", false)
+	n.Notify(context.Background(), "Download finished", "x", LevelInfo)
 	if gotPrio != "3" {
 		t.Errorf("success priority = %q", gotPrio)
 	}
-	NewWebhook("").Notify(context.Background(), "t", "m", false) // no-op, must not panic
+	n.Notify(context.Background(), "Malware detected", "x", LevelAlert)
+	if gotPrio != "5" || gotTags != "torrent,warning" {
+		t.Errorf("alert priority/tags = %q %q", gotPrio, gotTags)
+	}
+	NewWebhook("").Notify(context.Background(), "t", "m", LevelInfo) // no-op, must not panic
 }

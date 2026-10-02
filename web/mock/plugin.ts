@@ -83,14 +83,14 @@ function touch(job: Job) {
 	job.updatedAt = new Date().toISOString();
 }
 
-const ACTIVE = ['queued', 'adding', 'fetching', 'copying'];
+const ACTIVE = ['queued', 'adding', 'fetching', 'copying', 'scanning'];
 
 // Jobs advance on a 1 s tick so the queue visibly moves. Started by configureServer only:
 // a module-level timer would keep every process that loads vite.config.ts alive (svelte-kit sync).
 function tickJobs() {
 	for (const job of jobs) {
 		if (job.external) continue;
-		if (job.id.startsWith('j_seed_') && job.state !== 'copying') continue;
+		if (job.id.startsWith('j_seed_') && job.state !== 'copying' && job.state !== 'scanning') continue;
 		switch (job.state) {
 			case 'queued':
 				job.state = 'adding';
@@ -135,9 +135,29 @@ function tickJobs() {
 					f.state = done >= f.size ? 'done' : done > 0 ? 'copying' : 'pending';
 				}
 				if (job.progress >= 1) {
-					job.state = 'done';
+					job.state = 'scanning';
+					job.progress = 0;
 					job.speed = null;
 					job.eta = null;
+				}
+				touch(job);
+				break;
+			}
+			case 'scanning': {
+				job.progress = Math.min(1, job.progress + 0.25);
+				if (job.progress >= 1) {
+					const now = new Date().toISOString();
+					// Repacks play the infected path so the quarantine UI can be exercised.
+					if (/eicar|repack/i.test(job.name) && job.files.length) {
+						const f = job.files[0];
+						const quarantine = `.quarantine/${job.id}/${f.path}`;
+						f.state = 'quarantined';
+						job.state = 'infected';
+						job.scan = { status: 'infected', findings: [{ path: f.path, status: 'infected', signature: 'Win.Test.EICAR_HDB-1', quarantine }], scannedAt: now };
+					} else {
+						job.state = 'done';
+						job.scan = { status: 'clean', findings: [], scannedAt: now };
+					}
 				}
 				touch(job);
 				break;
@@ -174,7 +194,8 @@ function makeJob(body: Record<string, unknown>, name: string, infoHash: string |
 		error: null,
 		retryable: false,
 		files: jobFiles,
-		external: false
+		external: false,
+		scan: null
 	};
 }
 
@@ -222,7 +243,10 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
 			storages,
 			categories,
 			defaults,
-			languages
+			languages,
+			scanner: true,
+			user: null,
+			shareStorage: 'shared'
 		});
 		return true;
 	}
@@ -459,7 +483,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
 		return true;
 	}
 
-	const jobAction = /^\/api\/jobs\/([^/]+)(?:\/(cancel|retry|send))?$/.exec(path);
+	const jobAction = /^\/api\/jobs\/([^/]+)(?:\/(cancel|retry|send|rescan|share))?$/.exec(path);
 	if (jobAction) {
 		const id = decodeURIComponent(jobAction[1]);
 		const action = jobAction[2];
@@ -470,6 +494,10 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
 		}
 		if (method === 'DELETE' && !action) {
 			if (!guardMutation(req, res)) return true;
+			if (url.searchParams.get('purge') === 'true' && job.state !== 'cancelled' && job.state !== 'infected') {
+				fail(res, 409, 'bad_state', 'only a cancelled or infected job can be purged');
+				return true;
+			}
 			jobs = jobs.filter((j) => j.id !== id);
 			res.writeHead(204);
 			res.end();
@@ -477,7 +505,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
 		}
 		if (method === 'POST' && action === 'cancel') {
 			if (!guardMutation(req, res)) return true;
-			if (!ACTIVE.includes(job.state)) {
+			if (!ACTIVE.includes(job.state) || job.state === 'scanning') {
 				fail(res, 409, 'not_active', 'job is not running');
 				return true;
 			}
@@ -501,6 +529,27 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
 			for (const f of job.files) if (f.state === 'failed') f.state = 'pending';
 			// Seeded jobs stay still unless copying; make this one live.
 			job.id = job.id.replace('j_seed_', 'j_retry_');
+			touch(job);
+			send(res, 200, job);
+			return true;
+		}
+		if (method === 'POST' && action === 'share') {
+			if (!guardMutation(req, res)) return true;
+			if (job.state !== 'done' || job.storage !== 'shared') {
+				fail(res, 409, 'bad_state', 'only finished jobs delivered to shared can be shared');
+				return true;
+			}
+			send(res, 200, { url: `https://share.example/s/${job.id.slice(-8)}` });
+			return true;
+		}
+		if (method === 'POST' && action === 'rescan') {
+			if (!guardMutation(req, res)) return true;
+			if (job.state !== 'done' || job.mode === 'links' || job.scan?.status === 'clean') {
+				fail(res, 409, 'bad_state', 'job cannot be rescanned');
+				return true;
+			}
+			job.state = 'scanning';
+			job.progress = 0;
 			touch(job);
 			send(res, 200, job);
 			return true;

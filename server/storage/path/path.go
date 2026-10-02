@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/Encoded77/TorrentTrackerBrowser/server/core"
 )
@@ -217,6 +218,49 @@ func (s *Storage) Remove(ctx context.Context, rel string) error {
 	}
 	if err := os.Remove(dst + ".part"); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
+	}
+	return nil
+}
+
+// Open reads rel.
+func (s *Storage) Open(ctx context.Context, rel string) (io.ReadCloser, error) {
+	p, err := core.SafeRel(s.root, rel)
+	if err != nil {
+		return nil, err
+	}
+	return os.Open(p)
+}
+
+// Move renames from to to inside the root (quarantine); same filesystem, so
+// no data is copied.
+func (s *Storage) Move(ctx context.Context, from, to string) error {
+	src, err := core.SafeRel(s.root, from)
+	if err != nil {
+		return err
+	}
+	dst, err := core.SafeRel(s.root, to)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return err
+	}
+	return os.Rename(src, dst)
+}
+
+// Delete removes rel, then each parent folder left empty up to the root.
+func (s *Storage) Delete(ctx context.Context, rel string) error {
+	p, err := core.SafeRel(s.root, rel)
+	if err != nil {
+		return err
+	}
+	if err := os.Remove(p); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	for dir := filepath.Dir(p); dir != s.root && strings.HasPrefix(dir, s.root+string(filepath.Separator)); dir = filepath.Dir(dir) {
+		if os.Remove(dir) != nil { // not empty (or gone): stop climbing
+			break
+		}
 	}
 	return nil
 }

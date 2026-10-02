@@ -73,6 +73,7 @@ Adapters planned (each one package):
 | Source | Prowlarr (`/api/v1/search` fanned out per indexer) | Jackett, raw Torznab URL, Bitmagnet |
 | Engine | TorBox (debrid) | qBittorrent (client, SavePath + LocalFiles), Real-Debrid (Select), Transmission |
 | Storage | Path (a whitelisted root, subfolders on demand) | SFTP |
+| Scanner | ClamAV (clamd `INSTREAM` over TCP, optional) | VirusTotal hash lookup |
 
 Dropped on review: WebDAV/S3 (no offset resume), debrid search APIs as Sources (cross-adapter
 coupling), hoster-link engines (not torrents), "browser" as a Storage.
@@ -123,7 +124,7 @@ disk; logs info/warn. Container runs as the UID/GID the NAS export allows (confi
 | `GET /api/results/{id}/payload` | copy magnet / download the .torrent to the user's machine |
 | `POST /api/cached` | `{engine, hashes[]}` |
 | `POST /api/jobs` | `{resultId \| payloadId, engine, storage?, subdir?, files?, mode: copy\|adopt\|links}` |
-| `GET /api/jobs`, `POST /api/jobs/{id}/cancel`, `/retry`, `DELETE` | jobs + external engine items (`external: true`), one row model |
+| `GET /api/jobs`, `POST /api/jobs/{id}/cancel`, `/retry`, `/rescan`, `DELETE` | jobs + external engine items (`external: true`), one row model |
 | `POST /api/engines/{id}/items/{item}/jobs` | send an external engine item to a storage (creates a job in `copying`) |
 | `GET /api/jobs/{id}/files/{path}` | Range-capable stream with Content-Disposition (links mode without DirectURL) |
 | `GET /healthz` | |
@@ -147,6 +148,11 @@ storages:
 defaults: { engine: torbox, storage: downloads, mode: copy }
 limits: { jobs: 2, filesPerJob: 2, resultsPerIndexer: 100, indexerTimeout: 20s, resultTTL: 30m }
 notify: { webhook: "", lang: en }     # lang: language of notification titles (en | fr)
+scanners:                             # optional: scan copy/adopt deliveries, quarantine infected files
+  - { id: clamav, type: clamav, address: clamd:3310, maxSize: 2000MB, timeout: 15m,
+      storages: [downloads] }         # storages optional (omitted = every storage); maxSize < 2 GiB (ClamAV's
+                                      # per-file cap) and <= clamd StreamMaxLength; bigger files: "not scanned",
+                                      # except ZIP/RAR/7z archives, scanned entry by entry (mholt/archives)
 ```
 
 ## Frontend

@@ -203,7 +203,9 @@ export const en: Dictionary = {
 		fetching: 'Fetching',
 		ready: 'Ready',
 		copying: 'Copying',
+		scanning: 'Scanning',
 		done: 'Done',
+		infected: 'Infected',
 		failed: 'Failed',
 		cancelled: 'Cancelled'
 	},
@@ -212,10 +214,26 @@ export const en: Dictionary = {
 		copying: 'copying',
 		done: 'done',
 		failed: 'failed',
-		skipped: 'skipped'
+		skipped: 'skipped',
+		quarantined: 'quarantined'
 	},
 	cancelJob: 'Cancel',
 	retryJob: 'Retry',
+	rescanJob: 'Rescan',
+	jobRescanned: 'Scan restarted',
+	scanStatus: {
+		clean: 'Scanned',
+		infected: 'Infected',
+		skipped: 'Not scanned',
+		error: 'Not scanned'
+	},
+	scanHint: {
+		clean: 'No threat found by ClamAV',
+		infected: 'ClamAV found a threat: file(s) quarantined',
+		skipped: 'File(s) too large to scan',
+		error: 'The antivirus could not scan every file'
+	},
+	quarantinedTo: (p: string) => `quarantined: ${p}`,
 	deleteJob: 'Delete',
 	sendToStorage: 'Send to a storage',
 	openLink: 'Open',
@@ -228,6 +246,20 @@ export const en: Dictionary = {
 	jobCancelled: 'Download cancelled',
 	jobRetried: 'Download restarted',
 	jobDeleted: 'Removed from the queue',
+	purgeJob: 'Delete files',
+	confirmPurgeTitle: 'Delete the files?',
+	confirmPurgeBody: (count: number, size: string, folder: string) =>
+		`${count} file${count > 1 ? 's' : ''} (${size})${folder ? ` in the folder "${folder}"` : ''} will be deleted from the NAS, along with the engine copy and the queue entry. This cannot be undone.`,
+	jobPurged: 'Files deleted',
+	shareJob: 'Share',
+	shareTitle: 'Share link',
+	shareExpiry: 'Expires in',
+	shareDays: (n: number) => (n === 0 ? 'never' : n === 1 ? '1 day' : `${n} days`),
+	sharePassword: 'Password (optional)',
+	shareCreate: 'Create the link',
+	shareHint: 'Public link: anyone who has it can download. The files are not copied.',
+	copyLink: 'Copy',
+	linkCopied: 'Link copied',
 	eta: (h: string) => `${h} left`,
 	speed: (h: string) => `${h}/s`,
 	modeLabel: {

@@ -19,14 +19,16 @@ const (
 	JobFetching         JobState = "fetching"
 	JobReady            JobState = "ready"
 	JobCopying          JobState = "copying"
+	JobScanning         JobState = "scanning"
 	JobDone             JobState = "done"
+	JobInfected         JobState = "infected"
 	JobFailed           JobState = "failed"
 	JobCancelled        JobState = "cancelled"
 )
 
 // Terminal reports whether no further transition is possible except retry.
 func (s JobState) Terminal() bool {
-	return s == JobDone || s == JobFailed || s == JobCancelled
+	return s == JobDone || s == JobInfected || s == JobFailed || s == JobCancelled
 }
 
 // transitions lists the allowed state changes.
@@ -35,8 +37,10 @@ var transitions = map[JobState][]JobState{
 	JobAdding:           {JobWaitingSelection, JobFetching, JobReady, JobFailed, JobCancelled},
 	JobWaitingSelection: {JobFetching, JobFailed, JobCancelled},
 	JobFetching:         {JobWaitingSelection, JobReady, JobFailed, JobCancelled},
-	JobReady:            {JobCopying, JobDone, JobFailed, JobCancelled},
-	JobCopying:          {JobFetching, JobDone, JobFailed, JobCancelled},
+	JobReady:            {JobCopying, JobScanning, JobDone, JobFailed, JobCancelled},
+	JobCopying:          {JobFetching, JobScanning, JobDone, JobFailed, JobCancelled},
+	JobScanning:         {JobDone, JobInfected, JobFailed, JobCancelled},
+	JobDone:             {JobScanning}, // rescan
 	JobFailed:           {JobQueued},
 }
 
@@ -54,11 +58,12 @@ func CanTransition(from, to JobState) bool {
 type FileState string
 
 const (
-	FilePending FileState = "pending"
-	FileCopying FileState = "copying"
-	FileDone    FileState = "done"
-	FileFailed  FileState = "failed"
-	FileSkipped FileState = "skipped"
+	FilePending     FileState = "pending"
+	FileCopying     FileState = "copying"
+	FileDone        FileState = "done"
+	FileFailed      FileState = "failed"
+	FileSkipped     FileState = "skipped"
+	FileQuarantined FileState = "quarantined"
 )
 
 // JobFile is one file of a job as shown in the queue.
@@ -73,23 +78,25 @@ type JobFile struct {
 // Job is Payload x Engine x Storage with a state machine. The JSON tags
 // describe the persisted form; the API shape comes from View.
 type Job struct {
-	ID        string    `json:"id"`
-	CreatedAt time.Time `json:"createdAt"`
-	UpdatedAt time.Time `json:"updatedAt"`
-	Name      string    `json:"name"`
-	InfoHash  string    `json:"infoHash,omitempty"`
-	Engine    string    `json:"engine"`
-	Storage   string    `json:"storage,omitempty"`
-	Subdir    string    `json:"subdir,omitempty"`
-	Mode      Mode      `json:"mode"`
-	State     JobState  `json:"state"`
-	Progress  float64   `json:"progress"`
-	Speed     int64     `json:"speed,omitempty"`
-	ETA       int64     `json:"eta,omitempty"`
-	Error     string    `json:"error,omitempty"`
-	Retryable bool      `json:"retryable"`
-	Files     []JobFile `json:"files"`
-	External  bool      `json:"external"`
+	ID        string      `json:"id"`
+	CreatedAt time.Time   `json:"createdAt"`
+	UpdatedAt time.Time   `json:"updatedAt"`
+	Name      string      `json:"name"`
+	InfoHash  string      `json:"infoHash,omitempty"`
+	Engine    string      `json:"engine"`
+	Storage   string      `json:"storage,omitempty"`
+	Subdir    string      `json:"subdir,omitempty"`
+	Mode      Mode        `json:"mode"`
+	State     JobState    `json:"state"`
+	Progress  float64     `json:"progress"`
+	Speed     int64       `json:"speed,omitempty"`
+	ETA       int64       `json:"eta,omitempty"`
+	Error     string      `json:"error,omitempty"`
+	Retryable bool        `json:"retryable"`
+	Files     []JobFile   `json:"files"`
+	External  bool        `json:"external"`
+	Scan      *ScanResult `json:"scan,omitempty"`
+	Owner     string      `json:"owner,omitempty"` // users.header value of the creator; "" = operator
 
 	// Internal, persisted so a restart can resume.
 	Payload   Payload `json:"payload"`
@@ -117,6 +124,8 @@ type JobView struct {
 	Retryable bool          `json:"retryable"`
 	Files     []JobFileView `json:"files"`
 	External  bool          `json:"external"`
+	Scan      *ScanResult   `json:"scan"`
+	Owner     *string       `json:"owner"`
 }
 
 // JobFileView is the API representation of a JobFile.
@@ -148,7 +157,8 @@ func (j Job) View() JobView {
 		ID: j.ID, CreatedAt: j.CreatedAt, UpdatedAt: j.UpdatedAt, Name: j.Name,
 		InfoHash: optStr(j.InfoHash), Engine: j.Engine, Storage: optStr(j.Storage), Subdir: optStr(j.Subdir),
 		Mode: j.Mode, State: j.State, Progress: j.Progress, Speed: optInt(j.Speed), ETA: optInt(j.ETA),
-		Error: optStr(j.Error), Retryable: j.Retryable, Files: []JobFileView{}, External: j.External,
+		Error: optStr(j.Error), Retryable: j.Retryable, Files: []JobFileView{}, External: j.External, Scan: j.Scan,
+		Owner: optStr(j.Owner),
 	}
 	for _, f := range j.Files {
 		v.Files = append(v.Files, JobFileView{Path: f.Path, Size: f.Size, Done: f.Done, State: f.State, URL: optStr(f.URL)})

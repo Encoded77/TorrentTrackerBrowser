@@ -7,7 +7,8 @@ pluggable adapters declared in a YAML config; the UI renders whatever the backen
 
 - Backend: Go, single static binary, embeds the frontend, no database.
 - Frontend: SvelteKit (static), Svelte 5, Tailwind v4, shadcn-svelte.
-- First adapters: Prowlarr (source), TorBox and qBittorrent (engines), local path (storage).
+- First adapters: Prowlarr (source), TorBox and qBittorrent (engines), local path (storage), ClamAV
+  (optional malware scanner: infected deliveries are quarantined, see `scanners:` in PLAN.md).
 
 See [PLAN.md](PLAN.md) for the design and [API.md](API.md) for the HTTP contract.
 

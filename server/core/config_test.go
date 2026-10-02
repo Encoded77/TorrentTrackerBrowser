@@ -65,3 +65,40 @@ func TestBuildRegistryUnknownType(t *testing.T) {
 		t.Errorf("err = %v", err)
 	}
 }
+
+func TestParseConfigScanners(t *testing.T) {
+	raw := "storages: [{id: dl, type: path, root: /tmp}, {id: movies, type: path, root: /tmp}]\n" +
+		"scanners: [{id: av, type: clamav, address: 'clamd:3310', storages: [dl]}]"
+	c, err := ParseConfig([]byte(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(c.Scanners) != 1 || c.Scanners[0].Type() != "clamav" {
+		t.Fatalf("scanners = %v", c.Scanners)
+	}
+	if got := StringListOpt(c.Scanners[0], "storages"); len(got) != 1 || got[0] != "dl" {
+		t.Errorf("storages = %v", got)
+	}
+	for name, bad := range map[string]string{
+		"unknown storage": "scanners: [{id: av, type: clamav, storages: [nope]}]",
+		"missing type":    "scanners: [{id: av}]",
+	} {
+		if _, err := ParseConfig([]byte(bad)); err == nil {
+			t.Errorf("%s: expected an error", name)
+		}
+	}
+}
+
+func TestScannerFor(t *testing.T) {
+	r := NewRegistry()
+	if r.ScannerFor("dl") != nil {
+		t.Error("no scanner configured")
+	}
+	only := &fakeScanner{id: "only"}
+	all := &fakeScanner{id: "all"}
+	r.AddScanner(only, []string{"shared"})
+	r.AddScanner(all, nil)
+	if r.ScannerFor("shared") != only || r.ScannerFor("movies") != all {
+		t.Error("ScannerFor picks the first scanner covering the storage")
+	}
+}

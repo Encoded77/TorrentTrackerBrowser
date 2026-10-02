@@ -25,13 +25,16 @@ func NewWebhook(url string) Notifier {
 }
 
 // Notify sends the message; failures are only logged.
-func (w *Webhook) Notify(ctx context.Context, title, message string, failed bool) {
+func (w *Webhook) Notify(ctx context.Context, title, message string, level Level) {
 	if w == nil || w.URL == "" {
 		return
 	}
-	priority := 3
-	if failed {
+	priority, tags := 3, "torrent"
+	switch level {
+	case LevelFailed:
 		priority = 4
+	case LevelAlert:
+		priority, tags = 5, "torrent,warning"
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, w.URL, strings.NewReader(message))
 	if err != nil {
@@ -41,7 +44,7 @@ func (w *Webhook) Notify(ctx context.Context, title, message string, failed bool
 	req.Header.Set("Content-Type", "text/plain; charset=utf-8")
 	req.Header.Set("Title", title)
 	req.Header.Set("Priority", strconv.Itoa(priority))
-	req.Header.Set("Tags", "torrent")
+	req.Header.Set("Tags", tags)
 	resp, err := w.Client.Do(req)
 	if err != nil {
 		slog.Warn("notify: post", "err", err)

@@ -206,6 +206,13 @@ type Storage interface {
 	Adopt(ctx context.Context, localPath, rel string) error
 	Exists(ctx context.Context, rel string, size int64) (bool, error)
 	Remove(ctx context.Context, rel string) error
+	// Open reads a delivered file.
+	Open(ctx context.Context, rel string) (io.ReadCloser, error)
+	// Move renames a delivered file inside the storage, creating parents.
+	Move(ctx context.Context, from, to string) error
+	// Delete removes a delivered file, then the parent folders it leaves
+	// empty (never the root). A file already gone is not an error.
+	Delete(ctx context.Context, rel string) error
 }
 
 // Mode is how a job delivers files.
@@ -217,7 +224,16 @@ const (
 	ModeLinks Mode = "links" // keep on the engine; expose links
 )
 
+// Level is the urgency of a notification.
+type Level int
+
+const (
+	LevelInfo   Level = iota // job finished
+	LevelFailed              // job failed, or finished without a complete scan
+	LevelAlert               // malware found
+)
+
 // Notifier receives job outcomes.
 type Notifier interface {
-	Notify(ctx context.Context, title, message string, failed bool)
+	Notify(ctx context.Context, title, message string, level Level)
 }

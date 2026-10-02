@@ -113,3 +113,60 @@ func TestJobStorePrunesHistory(t *testing.T) {
 		t.Errorf("terminal job should be pruned first: %+v", list)
 	}
 }
+
+func TestScanStates(t *testing.T) {
+	for _, a := range [][2]JobState{
+		{JobCopying, JobScanning}, {JobReady, JobScanning}, {JobScanning, JobDone}, {JobScanning, JobInfected},
+		{JobScanning, JobFailed}, {JobDone, JobScanning},
+	} {
+		if !CanTransition(a[0], a[1]) {
+			t.Errorf("%s -> %s should be allowed", a[0], a[1])
+		}
+	}
+	for _, d := range [][2]JobState{
+		{JobInfected, JobQueued}, {JobInfected, JobScanning}, {JobScanning, JobCopying}, {JobQueued, JobScanning},
+	} {
+		if CanTransition(d[0], d[1]) {
+			t.Errorf("%s -> %s should be denied", d[0], d[1])
+		}
+	}
+	if !JobInfected.Terminal() || JobScanning.Terminal() {
+		t.Error("infected is terminal, scanning is not")
+	}
+}
+
+func TestSummarize(t *testing.T) {
+	cases := []struct {
+		in   []ScanStatus
+		want ScanStatus
+	}{
+		{nil, ScanClean},
+		{[]ScanStatus{ScanSkipped}, ScanSkipped},
+		{[]ScanStatus{ScanSkipped, ScanError}, ScanError},
+		{[]ScanStatus{ScanError, ScanInfected, ScanSkipped}, ScanInfected},
+	}
+	for _, c := range cases {
+		var f []ScanFinding
+		for _, s := range c.in {
+			f = append(f, ScanFinding{Status: s})
+		}
+		if got := summarize(f); got != c.want {
+			t.Errorf("summarize(%v) = %s, want %s", c.in, got, c.want)
+		}
+	}
+}
+
+func TestViewCarriesScan(t *testing.T) {
+	j := Job{ID: "j_1", State: JobDone, Files: []JobFile{}}
+	b, _ := json.Marshal(j.View())
+	if !strings.Contains(string(b), `"scan":null`) {
+		t.Errorf("view without scan = %s", b)
+	}
+	j.Scan = &ScanResult{Status: ScanInfected, Findings: []ScanFinding{{Path: "a.exe", Status: ScanInfected, Signature: "Eicar", Quarantine: ".quarantine/j_1/a.exe"}}}
+	b, _ = json.Marshal(j.View())
+	for _, want := range []string{`"status":"infected"`, `"signature":"Eicar"`, `"quarantine":".quarantine/j_1/a.exe"`} {
+		if !strings.Contains(string(b), want) {
+			t.Errorf("view %s lacks %s", b, want)
+		}
+	}
+}

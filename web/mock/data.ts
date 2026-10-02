@@ -52,8 +52,8 @@ export const engines = [
 ];
 
 export const storages = [
-	{ id: 'downloads', label: 'Téléchargements', free: 9_120_000_000_000 },
-	{ id: 'films', label: 'Films (NAS)', free: 1_240_000_000_000 }
+	{ id: 'downloads', label: 'Téléchargements', free: 9_120_000_000_000, scanned: true },
+	{ id: 'films', label: 'Films (NAS)', free: 1_240_000_000_000, scanned: false }
 ];
 
 export const categories = ['movies', 'tv', 'anime', 'music', 'books', 'games', 'software', 'other'];
@@ -247,7 +247,38 @@ export const seedJobs = (now: number) => [
 		files: [
 			{ path: 'Le Comte de Monte-Cristo (2024)/Le.Comte.de.Monte-Cristo.2024.FRENCH.1080p.BluRay.x264-UKDHD.mkv', size: 11.2 * GB, done: 11.2 * GB, state: 'done', url: null }
 		],
-		external: false
+		external: false,
+		scan: { status: 'clean', findings: [], scannedAt: new Date(now - 3_000_000).toISOString() }
+	},
+	{
+		id: 'j_seed_infected',
+		createdAt: new Date(now - 2_400_000).toISOString(),
+		updatedAt: new Date(now - 2_000_000).toISOString(),
+		name: 'Dune Awakening (v1.2.5 + DLC, MULTi14) [FitGirl Repack]',
+		infoHash: fakeHash('dune-awakening'),
+		engine: 'qbit',
+		storage: 'downloads',
+		subdir: null,
+		mode: 'copy',
+		state: 'infected',
+		progress: 1,
+		speed: null,
+		eta: null,
+		error: null,
+		retryable: false,
+		files: [
+			{ path: 'Dune Awakening/setup.exe', size: 46 * GB, done: 46 * GB, state: 'done', url: null },
+			{ path: 'Dune Awakening/MSVCR.dll', size: 2 * MB, done: 2 * MB, state: 'quarantined', url: null }
+		],
+		external: false,
+		scan: {
+			status: 'infected',
+			findings: [
+				{ path: 'Dune Awakening/setup.exe', status: 'skipped', reason: 'larger than the 2000 MB scan limit' },
+				{ path: 'Dune Awakening/MSVCR.dll', status: 'infected', signature: 'Win.Trojan.Agent-1234567', quarantine: '.quarantine/j_seed_infected/Dune Awakening/MSVCR.dll' }
+			],
+			scannedAt: new Date(now - 2_000_000).toISOString()
+		}
 	},
 	{
 		id: 'j_seed_copying',

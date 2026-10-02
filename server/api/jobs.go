@@ -92,6 +92,11 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	user := s.user(r)
+	if mode != core.ModeLinks && !s.storageAllowed(user, storage) {
+		writeError(w, http.StatusForbidden, "storage_not_allowed", "storage "+storage+" is not allowed for "+user)
+		return
+	}
 	var p core.Payload
 	var name, hash string
 	if b.PayloadID != nil {
@@ -121,17 +126,25 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		storage = ""
 	}
 	j := &core.Job{Name: name, InfoHash: hash, Engine: b.Engine, Storage: storage, Subdir: subdir, Mode: mode,
-		Payload: p, Selection: b.Files}
+		Payload: p, Selection: b.Files, Owner: user}
 	writeJSON(w, http.StatusCreated, s.Runner.Submit(j).View())
 }
 
-// listJobs returns own jobs newest first, then external engine items.
+// listJobs returns own jobs newest first, then external engine items. A named
+// user gets their own jobs only.
 func (s *Server) listJobs(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 	defer cancel()
+	user := s.user(r)
 	views := []core.JobView{}
 	for _, j := range s.Runner.Store.List() {
-		views = append(views, j.View())
+		if user == "" || j.Owner == user {
+			views = append(views, j.View())
+		}
+	}
+	if user != "" {
+		writeJSON(w, http.StatusOK, map[string]any{"jobs": views})
+		return
 	}
 	for _, j := range s.Runner.External(ctx) {
 		views = append(views, j.View())
@@ -140,6 +153,9 @@ func (s *Server) listJobs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) cancelJob(w http.ResponseWriter, r *http.Request) {
+	if !s.ownJob(w, r, r.PathValue("id")) {
+		return
+	}
 	j, err := s.Runner.Cancel(r.Context(), r.PathValue("id"))
 	if errors.Is(err, core.ErrJobNotFound) {
 		writeError(w, http.StatusNotFound, "not_found", "unknown job")
@@ -153,6 +169,9 @@ func (s *Server) cancelJob(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) retryJob(w http.ResponseWriter, r *http.Request) {
+	if !s.ownJob(w, r, r.PathValue("id")) {
+		return
+	}
 	j, err := s.Runner.Retry(r.PathValue("id"))
 	if errors.Is(err, core.ErrJobNotFound) {
 		writeError(w, http.StatusNotFound, "not_found", "unknown job")
@@ -165,10 +184,35 @@ func (s *Server) retryJob(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, j.View())
 }
 
+func (s *Server) rescanJob(w http.ResponseWriter, r *http.Request) {
+	if !s.ownJob(w, r, r.PathValue("id")) {
+		return
+	}
+	j, err := s.Runner.Rescan(r.PathValue("id"))
+	if errors.Is(err, core.ErrJobNotFound) {
+		writeError(w, http.StatusNotFound, "not_found", "unknown job")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusConflict, "bad_state", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, j.View())
+}
+
 func (s *Server) deleteJob(w http.ResponseWriter, r *http.Request) {
+	if !s.ownJob(w, r, r.PathValue("id")) {
+		return
+	}
 	deleteFiles := r.URL.Query().Get("deleteFiles") == "true"
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
+	if r.URL.Query().Get("purge") == "true" {
+		pctx, pcancel := context.WithTimeout(r.Context(), 2*time.Minute) // many files over NFS
+		defer pcancel()
+		s.purgeJob(pctx, w, r.PathValue("id"))
+		return
+	}
 	err := s.Runner.Delete(ctx, r.PathValue("id"), deleteFiles)
 	if errors.Is(err, core.ErrJobNotFound) || errors.Is(err, core.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "not_found", "unknown job")
@@ -184,6 +228,9 @@ func (s *Server) deleteJob(w http.ResponseWriter, r *http.Request) {
 // sendJob sends an external engine item to a storage.
 func (s *Server) sendJob(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if !s.ownJob(w, r, id) {
+		return
+	}
 	if !strings.HasPrefix(id, "x_") {
 		writeError(w, http.StatusBadRequest, "bad_request", "send applies to external items only")
 		return
@@ -227,4 +274,19 @@ func (s *Server) sendJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, j.View())
+}
+
+// purgeJob deletes a cancelled or infected job together with its files.
+func (s *Server) purgeJob(ctx context.Context, w http.ResponseWriter, id string) {
+	err := s.Runner.Purge(ctx, id)
+	switch {
+	case errors.Is(err, core.ErrJobNotFound):
+		writeError(w, http.StatusNotFound, "not_found", "unknown job")
+	case errors.Is(err, core.ErrNotPurgeable):
+		writeError(w, http.StatusConflict, "bad_state", err.Error())
+	case err != nil:
+		writeError(w, http.StatusBadGateway, "storage_error", err.Error())
+	default:
+		w.WriteHeader(http.StatusNoContent)
+	}
 }

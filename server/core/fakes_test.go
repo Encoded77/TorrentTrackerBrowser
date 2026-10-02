@@ -1,9 +1,12 @@
 package core
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -55,6 +58,7 @@ type fakeEngine struct {
 	addErr   error
 	statuses []ItemState // successive Status answers, last one repeats
 	calls    map[string]int
+	removed  []bool // deleteFiles of each Remove call
 }
 
 type fakeItem struct {
@@ -143,6 +147,9 @@ func (e *fakeEngine) List(ctx context.Context) ([]Item, error) {
 func (e *fakeEngine) Remove(ctx context.Context, it Item, deleteFiles bool) error {
 	e.count("remove")
 	e.mu.Lock()
+	e.removed = append(e.removed, deleteFiles)
+	e.mu.Unlock()
+	e.mu.Lock()
 	defer e.mu.Unlock()
 	if _, ok := e.items[it.ID]; !ok {
 		return ErrNotFound
@@ -166,13 +173,14 @@ func contentOpener(content string) OpenAt {
 
 // memStorage keeps files in memory and records .part sizes.
 type memStorage struct {
-	mu      sync.Mutex
-	id      string
-	files   map[string][]byte
-	parts   map[string][]byte
-	free    int64
-	putErr  error
-	adopted map[string]string
+	mu        sync.Mutex
+	id        string
+	files     map[string][]byte
+	parts     map[string][]byte
+	free      int64
+	putErr    error
+	deleteErr error
+	adopted   map[string]string
 }
 
 func newMemStorage(id string) *memStorage {
@@ -218,6 +226,41 @@ func (s *memStorage) Adopt(ctx context.Context, localPath, rel string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.adopted[rel] = localPath
+	s.files[rel] = []byte("adopted:" + localPath)
+	return nil
+}
+func (s *memStorage) Open(ctx context.Context, rel string) (io.ReadCloser, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	b, ok := s.files[rel]
+	if !ok {
+		return nil, fmt.Errorf("open %s: %w", rel, os.ErrNotExist)
+	}
+	return memFile{bytes.NewReader(b)}, nil
+}
+
+// memFile is seekable like an *os.File, which ZIP and 7z readers need.
+type memFile struct{ *bytes.Reader }
+
+func (memFile) Close() error { return nil }
+func (s *memStorage) Delete(ctx context.Context, rel string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.deleteErr != nil {
+		return s.deleteErr
+	}
+	delete(s.files, rel)
+	return nil
+}
+func (s *memStorage) Move(ctx context.Context, from, to string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	b, ok := s.files[from]
+	if !ok {
+		return fmt.Errorf("move %s: %w", from, os.ErrNotExist)
+	}
+	delete(s.files, from)
+	s.files[to] = b
 	return nil
 }
 func (s *memStorage) Exists(ctx context.Context, rel string, size int64) (bool, error) {
@@ -234,12 +277,81 @@ func (s *memStorage) Remove(ctx context.Context, rel string) error {
 }
 
 type recordingNotifier struct {
-	mu    sync.Mutex
-	calls []string
+	mu     sync.Mutex
+	calls  []string // titles
+	levels []Level
+	bodies []string
 }
 
-func (n *recordingNotifier) Notify(ctx context.Context, title, message string, failed bool) {
+func (n *recordingNotifier) Notify(ctx context.Context, title, message string, level Level) {
 	n.mu.Lock()
 	n.calls = append(n.calls, title)
+	n.levels = append(n.levels, level)
+	n.bodies = append(n.bodies, message)
 	n.mu.Unlock()
+}
+
+// fakeScanner flags the paths listed in bad, fails every call when err is
+// set, skips files over maxSize, waits on block when it is not nil, and
+// records the paths it saw and how many bytes it read.
+type fakeScanner struct {
+	mu      sync.Mutex
+	id      string
+	bad     map[string]bool
+	err     error
+	maxSize int64
+	block   chan struct{}
+	seen    []string
+	read    map[string]int
+}
+
+func (f *fakeScanner) ID() string {
+	if f.id == "" {
+		return "av"
+	}
+	return f.id
+}
+
+func (f *fakeScanner) Scan(ctx context.Context, name string, r io.Reader, size int64) (Verdict, error) {
+	if f.block != nil {
+		select {
+		case <-f.block:
+		case <-ctx.Done():
+			return Verdict{}, ctx.Err()
+		}
+	}
+	f.mu.Lock()
+	f.seen = append(f.seen, name)
+	err, bad, maxSize := f.err, f.bad[name], f.maxSize
+	f.mu.Unlock()
+	if err != nil {
+		return Verdict{}, err
+	}
+	if maxSize > 0 && size > maxSize {
+		return Verdict{Status: ScanSkipped, Reason: "too large"}, nil
+	}
+	b, rerr := io.ReadAll(r)
+	if rerr != nil {
+		return Verdict{}, rerr
+	}
+	f.mu.Lock()
+	if f.read == nil {
+		f.read = map[string]int{}
+	}
+	f.read[name] = len(b)
+	f.mu.Unlock()
+	if bad {
+		return Verdict{Status: ScanInfected, Signature: "Eicar-Test-Signature"}, nil
+	}
+	return Verdict{Status: ScanClean}, nil
+}
+
+func (f *fakeScanner) MaxSize() int64 { return f.maxSize }
+
+func (f *fakeScanner) setErr(err error) { f.mu.Lock(); f.err = err; f.mu.Unlock() }
+
+func (f *fakeScanner) seenPaths() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string(nil), f.seen...)
 }

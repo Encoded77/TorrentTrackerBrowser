@@ -6,6 +6,13 @@
 	import SendIcon from '@lucide/svelte/icons/send';
 	import ExternalLinkIcon from '@lucide/svelte/icons/external-link';
 	import LoaderCircleIcon from '@lucide/svelte/icons/loader-circle';
+	import ShieldCheckIcon from '@lucide/svelte/icons/shield-check';
+	import ShieldAlertIcon from '@lucide/svelte/icons/shield-alert';
+	import ShieldQuestionIcon from '@lucide/svelte/icons/shield-question-mark';
+	import ScanSearchIcon from '@lucide/svelte/icons/scan-search';
+	import FileXIcon from '@lucide/svelte/icons/file-x';
+	import Share2Icon from '@lucide/svelte/icons/share-2';
+	import UserIcon from '@lucide/svelte/icons/user';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Progress } from '$lib/components/ui/progress/index.js';
@@ -21,6 +28,9 @@
 		error = null,
 		oncancel,
 		onretry,
+		onrescan,
+		onpurge,
+		onshare,
 		ondelete
 	}: {
 		job: Job;
@@ -28,12 +38,15 @@
 		error?: string | null;
 		oncancel: () => void;
 		onretry: () => void;
+		onrescan: () => void;
+		onpurge: () => void;
+		onshare: () => void;
 		ondelete: () => void;
 	} = $props();
 
 	let showFiles = $state(false);
 
-	const ACTIVE = new Set<JobState>(['queued', 'adding', 'waitingSelection', 'fetching', 'copying']);
+	const ACTIVE = new Set<JobState>(['queued', 'adding', 'waitingSelection', 'fetching', 'copying', 'scanning']);
 	const active = $derived(ACTIVE.has(job.state));
 	const stateClass: Record<JobState, string> = {
 		queued: 'border-border text-muted-foreground',
@@ -42,7 +55,9 @@
 		fetching: 'border-info/40 bg-info/10 text-info',
 		ready: 'border-cached/40 bg-cached/10 text-cached',
 		copying: 'border-info/40 bg-info/10 text-info',
+		scanning: 'border-info/40 bg-info/10 text-info',
 		done: 'border-seed-high/40 bg-seed-high/10 text-seed-high',
+		infected: 'border-destructive/40 bg-destructive/10 text-destructive',
 		failed: 'border-destructive/40 bg-destructive/10 text-destructive',
 		cancelled: 'border-border bg-muted text-muted-foreground'
 	};
@@ -53,7 +68,9 @@
 		fetching: '[&>[data-slot=progress-indicator]]:bg-info',
 		ready: '[&>[data-slot=progress-indicator]]:bg-cached',
 		copying: '[&>[data-slot=progress-indicator]]:bg-info',
+		scanning: '[&>[data-slot=progress-indicator]]:bg-info',
 		done: '[&>[data-slot=progress-indicator]]:bg-seed-high',
+		infected: '[&>[data-slot=progress-indicator]]:bg-destructive',
 		failed: '[&>[data-slot=progress-indicator]]:bg-destructive',
 		cancelled: '[&>[data-slot=progress-indicator]]:bg-muted-foreground'
 	};
@@ -62,10 +79,33 @@
 		copying: 'text-info',
 		done: 'text-seed-high',
 		failed: 'text-destructive',
-		skipped: 'text-muted-foreground/60'
+		skipped: 'text-muted-foreground/60',
+		quarantined: 'text-destructive'
 	};
+	const scanClass: Record<string, string> = {
+		clean: 'border-seed-high/40 text-seed-high',
+		infected: 'border-destructive/40 bg-destructive/10 text-destructive',
+		skipped: 'border-border text-muted-foreground',
+		error: 'border-warning/50 text-warning-foreground dark:text-warning'
+	};
+	// A scan cannot be cancelled: the files are already delivered (API answers 409).
+	const canCancel = $derived(active && !job.external && job.state !== 'scanning');
+	const canRescan = $derived(
+		app.storageScanned(job.storage) && !job.external && job.mode !== 'links' && job.state === 'done' && job.scan?.status !== 'clean'
+	);
+	const scanFindings = $derived(job.scan?.findings ?? []);
+	// Files a purge would delete: delivered or quarantined, never pre-existing (skipped) ones.
+	const canPurge = $derived(
+		!job.external &&
+			(job.state === 'cancelled' || job.state === 'infected') &&
+			job.files.some((f) => f.state === 'done' || f.state === 'quarantined')
+	);
 
-	const showProgress = $derived(active || job.state === 'failed' || (job.state === 'done' && !job.external));
+	const canShare = $derived(!job.external && job.state === 'done' && !!job.storage && job.storage === app.caps?.shareStorage);
+
+	const showProgress = $derived(
+		active || job.state === 'failed' || ((job.state === 'done' || job.state === 'infected') && !job.external)
+	);
 	const details = $derived.by(() => {
 		const parts: string[] = [];
 		if (active) parts.push(percent(job.progress));
@@ -86,11 +126,31 @@
 					{#if active}<LoaderCircleIcon class="size-3 animate-spin motion-reduce:animate-none" aria-hidden="true" />{/if}
 					{s.jobState[job.state] ?? job.state}
 				</span>
+				{#if job.scan && job.state !== 'infected'}
+					<Tooltip.Root>
+						<Tooltip.Trigger class={cn('inline-flex h-5 items-center gap-1 rounded-md border px-1.5 font-medium', scanClass[job.scan.status])}>
+							{#if job.scan.status === 'clean'}
+								<ShieldCheckIcon class="size-3" aria-hidden="true" />
+							{:else if job.scan.status === 'infected'}
+								<ShieldAlertIcon class="size-3" aria-hidden="true" />
+							{:else}
+								<ShieldQuestionIcon class="size-3" aria-hidden="true" />
+							{/if}
+							{s.scanStatus[job.scan.status]}
+						</Tooltip.Trigger>
+						<Tooltip.Content>{s.scanHint[job.scan.status]}</Tooltip.Content>
+					</Tooltip.Root>
+				{/if}
 				{#if job.external}
 					<Tooltip.Root>
 						<Tooltip.Trigger class="inline-flex h-5 items-center rounded-md border border-dashed border-border px-1.5 text-muted-foreground">{s.external}</Tooltip.Trigger>
 						<Tooltip.Content>{s.externalHint}</Tooltip.Content>
 					</Tooltip.Root>
+				{/if}
+				{#if job.owner && !app.caps?.user}
+					<span class="inline-flex h-5 items-center gap-1 rounded-md border border-border px-1.5 text-muted-foreground">
+						<UserIcon class="size-3" aria-hidden="true" />{job.owner}
+					</span>
 				{/if}
 				<span class="inline-flex h-5 items-center rounded-md border border-border px-1.5 text-muted-foreground">{app.engineName(job.engine)}</span>
 				{#if job.storage}
@@ -118,6 +178,23 @@
 		</p>
 	{/if}
 
+	{#if scanFindings.length}
+		<ul
+			class={cn(
+				'mt-2 rounded-md border px-2 py-1 text-xs break-words',
+				job.scan?.status === 'infected' ? 'border-destructive/30 bg-destructive/5 text-destructive' : 'border-border bg-muted/30 text-muted-foreground'
+			)}
+			role={job.scan?.status === 'infected' ? 'alert' : undefined}
+		>
+			{#each scanFindings as f (f.path)}
+				<li>
+					<span class="font-medium">{f.path}</span> : {f.signature ?? f.reason}
+					{#if f.quarantine}<span class="block opacity-80">{s.quarantinedTo(f.quarantine)}</span>{/if}
+				</li>
+			{/each}
+		</ul>
+	{/if}
+
 	<div class="mt-2 flex flex-wrap items-center gap-1">
 		{#if job.files.length}
 			<button
@@ -137,10 +214,28 @@
 					{s.sendToStorage}
 				</Button>
 			{/if}
-			{#if active && !job.external}
+			{#if canShare}
+				<Button size="xs" variant="outline" onclick={onshare} disabled={busy}>
+					<Share2Icon />
+					{s.shareJob}
+				</Button>
+			{/if}
+			{#if canCancel}
 				<Button size="xs" variant="outline" onclick={oncancel} disabled={busy}>
 					<BanIcon />
 					{s.cancelJob}
+				</Button>
+			{/if}
+			{#if canRescan}
+				<Button size="xs" variant="outline" onclick={onrescan} disabled={busy}>
+					<ScanSearchIcon />
+					{s.rescanJob}
+				</Button>
+			{/if}
+			{#if canPurge}
+				<Button size="xs" variant="destructive" onclick={onpurge} disabled={busy}>
+					<FileXIcon />
+					{s.purgeJob}
 				</Button>
 			{/if}
 			{#if job.retryable && !job.external}

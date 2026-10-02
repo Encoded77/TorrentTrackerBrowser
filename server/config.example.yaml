@@ -66,6 +66,19 @@ limits:
   resultCap: 20000        # max cached results
   jobHistory: 200         # finished jobs kept in the queue
 
+# Per-user queues: the reverse proxy authenticates and puts the user name in this header (and must
+# overwrite any client-sent value). Without the header a request is the operator, who sees every job;
+# a named user sees and acts on their own jobs only and may deliver to `storages` only (empty = all).
+# users:
+#   header: X-Remote-User
+#   storages: [downloads]
+
+# "Share" button on finished jobs of one storage: the delivered paths (relative to that storage) are
+# POSTed as JSON {paths, name, description, days, password} to url, which answers {"url": "..."}.
+# share:
+#   url: http://share-service:8090/api/share
+#   storage: downloads
+
 # ntfy topic URL (or any endpoint accepting ntfy's header convention): the message is
 # the text body, Title/Priority/Tags are headers. Posted on job done or failed. Empty disables.
 notify:

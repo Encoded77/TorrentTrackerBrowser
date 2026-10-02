@@ -21,6 +21,7 @@ import (
 	// Adapters register themselves with the core registry.
 	_ "github.com/Encoded77/TorrentTrackerBrowser/server/engine/qbittorrent"
 	_ "github.com/Encoded77/TorrentTrackerBrowser/server/engine/torbox"
+	_ "github.com/Encoded77/TorrentTrackerBrowser/server/scanner/clamav"
 	_ "github.com/Encoded77/TorrentTrackerBrowser/server/source/prowlarr"
 	_ "github.com/Encoded77/TorrentTrackerBrowser/server/storage/path"
 )

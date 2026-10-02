@@ -26,3 +26,19 @@ services:
       driver: journald
       options:
         tag: ttb
+
+  # Optional malware scanner (config.yaml `scanners:`, address clamd:3310). clamd's defaults cap a
+  # stream at 100 MB: give it a clamd.conf with StreamMaxLength/MaxScanSize/MaxFileSize >= the
+  # scanner's maxSize (e.g. 2000M; ClamAV never scans more than 2 GiB of a file), MaxScanTime
+  # high enough for big archives (e.g. 600000), and DetectPUA no to keep cracks/keygens quiet.
+  # clamd:
+  #   image: clamav/clamav:1.4
+  #   restart: unless-stopped
+  #   environment:
+  #     FRESHCLAM_CHECKS: "2"
+  #   volumes:
+  #     - ./clamd.conf:/etc/clamav/clamd.conf:ro
+  #     - clamav-db:/var/lib/clamav
+
+# volumes:
+#   clamav-db:
